@@ -1,0 +1,3 @@
+bw2data==4.0.dev51
+bw2io==0.9.dev34
+bw2calc==2.0.dev18
