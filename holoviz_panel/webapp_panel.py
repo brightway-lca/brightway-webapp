@@ -6,6 +6,10 @@ import bw2data as bd
 import bw2io as bi
 import bw2calc as bc
 
+# workaround
+import os
+os.environ["BRIGHTWAY_DIR"] = "/tmp/"
+
 # minimum working example of a
 # life-cycle assessment calculation with Brightway
 

@@ -1,4 +1,4 @@
-importScripts("https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js");
+importScripts("https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js");
 
 function sendPatch(patch, buffers, msg_id) {
   self.postMessage({
@@ -40,7 +40,7 @@ async function startApplication() {
   console.log("Packages loaded!");
   self.postMessage({type: 'status', msg: 'Executing code'})
   const code = `
-  \nimport asyncio\n\nfrom panel.io.pyodide import init_doc, write_doc\n\ninit_doc()\n\n# %%\nimport panel as pn\npn.extension()\n\nimport bw2data as bd\nimport bw2io as bi\nimport bw2calc as bc\n\n# minimum working example of a\n# life-cycle assessment calculation with Brightway\n\ndef recreate_fresh_project(project_name):\n    try:\n        bd.projects.delete_project(project_name, delete_dir=True)\n    except:\n        pass\n    bd.projects.create_project(project_name)\n    bd.projects.set_current(project_name)\n\nrecreate_fresh_project(project_name = "bw_panel")\n\nbi.add_example_database(searchable=False)\nco2 = bd.get_node(name="CO2")\ngwp = bd.Method(("GWP", "simple"))\ngwp.write([(co2.key, 1)])\nlca = bc.LCA({bd.get_node(name="Electric car"):1}, method=("GWP", "simple"))\nlca.lci()\nlca.lcia()\nlca_score = lca.score\n\n# minimum working example of a\n# Panel app with a button and a text widget\n\ndial = pn.indicators.Dial(\n    name='CO2 [kg]',\n    value=lca_score,\n    format='{value:,.0f}kg',\n    bounds=(0, 5000)\n)\n\n# https://panel.holoviz.org/reference/layouts/Column.html\npn.Column(\n    dial\n).servable()\n\nawait write_doc()
+  \nimport asyncio\n\nfrom panel.io.pyodide import init_doc, write_doc\n\ninit_doc()\n\n# %%\nimport panel as pn\npn.extension()\n\nimport bw2data as bd\nimport bw2io as bi\nimport bw2calc as bc\n\n# workaround\nimport os\nos.environ["BRIGHTWAY_DIR"] = "/tmp/"\n\n# minimum working example of a\n# life-cycle assessment calculation with Brightway\n\ndef recreate_fresh_project(project_name):\n    try:\n        bd.projects.delete_project(project_name, delete_dir=True)\n    except:\n        pass\n    bd.projects.create_project(project_name)\n    bd.projects.set_current(project_name)\n\nrecreate_fresh_project(project_name = "bw_panel")\n\nbi.add_example_database(searchable=False)\nco2 = bd.get_node(name="CO2")\ngwp = bd.Method(("GWP", "simple"))\ngwp.write([(co2.key, 1)])\nlca = bc.LCA({bd.get_node(name="Electric car"):1}, method=("GWP", "simple"))\nlca.lci()\nlca.lcia()\nlca_score = lca.score\n\n# minimum working example of a\n# Panel app with a button and a text widget\n\ndial = pn.indicators.Dial(\n    name='CO2 [kg]',\n    value=lca_score,\n    format='{value:,.0f}kg',\n    bounds=(0, 5000)\n)\n\n# https://panel.holoviz.org/reference/layouts/Column.html\npn.Column(\n    dial\n).servable()\n\nawait write_doc()
   `
 
   try {
