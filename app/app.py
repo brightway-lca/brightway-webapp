@@ -1,5 +1,7 @@
 # %%
 import panel as pn
+from panel import HSpacer, Spacer
+
 pn.extension()
 
 import bw2data as bd
@@ -42,7 +44,51 @@ dial = pn.indicators.Dial(
     bounds=(0, 5000)
 )
 
+# https://panel.holoviz.org/tutorials/basic/templates.html
+
+logos = pn.pane.SVG(
+    'app/_media/PSI+ETHZ_white.svg',
+    height=50,
+    margin=0,
+    sizing_mode="fixed",
+    align="center"
+)
+header = pn.Row(
+    pn.pane.SVG(
+        'app/_media/BW_white.svg',
+        height=60,
+        margin=0,
+        sizing_mode="fixed",
+        align="center"
+    ),
+    HSpacer(),
+    pn.pane.SVG(
+        'app/_media/PSI+ETHZ_white.svg',
+        height=50,
+        margin=0,
+        sizing_mode="fixed",
+        align="center"
+    ),
+    sizing_mode="stretch_width",
+)
+
+
+template = pn.template.MaterialTemplate(
+    header=header,
+    title='Brightway WebApp',
+    sidebar=[],
+    header_background = '#2d853a'
+)
+
+template.main.append(
+    pn.Row(
+        dial
+    )
+)
+
+template.servable()
+
 # https://panel.holoviz.org/reference/layouts/Column.html
-pn.Column(
-    dial
-).servable()
+#pn.Column(
+#    dial
+#).servable()
