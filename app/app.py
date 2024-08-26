@@ -63,7 +63,7 @@ header = pn.Row(
     ),
     HSpacer(),
     pn.pane.SVG(
-        'app/_media/PSI+ETHZ_white.svg',
+        'app/_media/PSI+ETHZ+WISER_white.svg',
         height=50,
         margin=0,
         sizing_mode="fixed",
