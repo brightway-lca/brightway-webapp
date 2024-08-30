@@ -54,13 +54,6 @@ logos = pn.pane.SVG(
     align="center"
 )
 header = pn.Row(
-    pn.pane.SVG(
-        'app/_media/BW_white.svg',
-        height=60,
-        margin=0,
-        sizing_mode="fixed",
-        align="center"
-    ),
     HSpacer(),
     pn.pane.SVG(
         'app/_media/PSI+ETHZ+WISER_white.svg',
@@ -76,8 +69,8 @@ header = pn.Row(
 template = pn.template.MaterialTemplate(
     header=header,
     title='Brightway WebApp',
-    sidebar=[],
-    header_background = '#2d853a'
+    header_background='#2d853a',
+    logo='app/_media/BW_white.svg',
 )
 
 template.main.append(
