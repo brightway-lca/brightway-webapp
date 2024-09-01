@@ -37,6 +37,7 @@ electricity_process: Activity = bd.utils.get_node(
     location = 'United States',
     type = 'process'
 )
+uid_electricity_process: int = electricity_process.as_dict()['id']
 
 graph_traversal_nodes: dict = graph_traversal['nodes']
 
@@ -101,7 +102,8 @@ def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     Parameters
     ----------
     df_edges : pd.DataFrame
-        A dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
+        A dataframe of graph edges.
+        Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
 
     Returns
     -------
@@ -164,8 +166,40 @@ def trace_branch(df: pd.DataFrame, start_node: int) -> list:
 
 df_branches = add_branch_information_to_dataframe(df_edges)
 
-# df_nodes = pd.merge(df_nodes, df_branches, left_on='unique_id', right_on='producer_unique_id', how='left')
+df_nodes = pd.merge(df_nodes, df_branches, left_on='unique_id', right_on='producer_unique_id', how='left')
 
-scope_1: float = 0
-scope_2: float = 0
-scope_3: float = 0
+def determine_scope_2_emissions(df: pd.DataFrame, uid) -> float:
+    """
+    Given a dataframe of graph nodes and the uid of the electricity production process,
+    returns the scope 2 emissions.
+
+    | activity_datapackage_id | depth | cumulative_score |
+    |-------------------------|-------|------------------|
+    | 0                       | 1     | 100              |
+    | (...)                   | 2     | (...)            |
+    | 53                      | 2     | 50               | # scope 2 emissions
+    | (...)                   | (...) | (...)            |
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+       A dataframe of graph edges.
+       Must contain integer-type columns `activity_datapackage_id`, `depth`, `cumulative_score`.
+
+    Returns
+    -------
+    float
+        Scope 2 emissions value.
+    """
+    return df.loc[
+        (df['depth'] == 2)
+        &
+        (df['activity_datapackage_id'] == uid)
+    ]['cumulative_score'].values[0]
+
+scope_1: float = df_nodes[df_nodes['unique_id'] == 0]['direct_emissions_score'][0]
+scope_2: float = determine_scope_2_emissions(df_nodes, uid_electricity_process)
+scope_3: float = lca.score - scope_1 - scope_2
+remainder: float = lca.score - df_nodes[df_nodes['unique_id'] == 0]['cumulative_score'][0]
+
+
