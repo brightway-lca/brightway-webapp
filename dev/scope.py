@@ -3,6 +3,7 @@ import bw_graph_tools as bgt
 import bw2io as bi
 import bw2data as bd
 import bw2calc as bc
+import pandas as pd
 
 from bw2data.backends.proxies import Activity
 from bw_graph_tools.graph_traversal import Node
@@ -37,30 +38,23 @@ electricity_process: Activity = bd.utils.get_node(
     type = 'process'
 )
 
-scope_1: float = 0
-scope_2: float = 0
-scope_3: float = 0
-
-
 graph_traversal_nodes: dict = graph_traversal['nodes']
 
 def nodes_to_dataframe(nodes: dict) -> pd.DataFrame:
     """
     Returns a dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
 
-    _extended_summary_
-
     Parameters
     ----------
     nodes : dict
         A dictionary of nodes in the graph traversal.
         Can be created by selecting the 'nodes' key from the dictionary
-        returned by the function bw_graph_tools.NewNodeEachVisitGraphTraversal.calculate().
+        returned by the function `bw_graph_tools.NewNodeEachVisitGraphTraversal.calculate()`.
 
     Returns
     -------
     pd.DataFrame
-        _description_
+        A dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
     """
     list_for_df = []
     for i in range(0, len(graph_traversal_nodes)-1):
@@ -76,34 +70,15 @@ def nodes_to_dataframe(nodes: dict) -> pd.DataFrame:
     return pd.DataFrame(list_for_df)
 
 
-
-list_all_nodes_uid = [node.unique_id for node in graph_traversal_nodes.values()][1:]
-list_all_nodes_uid = list_all_nodes_uid[1:] # remove the first node
-
-df_nodes = pd.DataFrame([node for node in graph_traversal['nodes'].values()])
-df_edges = pd.DataFrame(graph_traversal['edges'])
+df_nodes = pd.DataFrame([node for node in graph_traversal['nodes'].values()]).drop(0)
+df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
 
 
-for node_uid in list_all_nodes_uid:
-    list_uid_in_branch = [node_uid]
-    df_current_edges = df_all_edges[df_all_edges['producer_unique_id'] == node_uid]
-
-def add_branch_information_to_nodes(
-    df_nodes: pd.DataFrame,
-    df_edges: pd.DataFrame,
-) -> pd.DataFrame:
+def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
-    """
-    df_nodes['branch'] = np.empty((len(df_nodes), 0)).tolist()
-    for uid_producer in df_edges['producer_unique_id'].values:
-        uid_consumer = df_edges.loc[df_edges['producer_unique_id'] == uid_producer, 'consumer_unique_id'].values[0]
-        df_nodes.loc[df_nodes['unique_id'] == uid_producer, 'branch'] += [uid_producer, uid_consumer]
-    return df_nodes
+    Adds 'branch' information to terminal nodes in a dataframe of graph edges.
 
-
-def add_branch_information(df_edges: pd.DataFrame) -> pd.DataFrame:
-    """
-    Adds 'branch' information to an 
+    For example:
 
     | consumer_unique_id | producer_unique_id |
     |--------------------|--------------------|
@@ -123,33 +98,74 @@ def add_branch_information(df_edges: pd.DataFrame) -> pd.DataFrame:
     | 3                  | 5                  | [0, 3, 5]    |
     | 5                  | 6                  | [0, 3, 5, 6] |
 
+    Parameters
+    ----------
+    df_edges : pd.DataFrame
+        A dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
 
+    Returns
+    -------
+    pd.DataFrame
+        A dataframe of graph nodes with a column 'branch' that contains the branch of nodes that lead to the terminal producer node.
     """
-# %%
-# Initialize an empty list to store the branches
-branches = []
+    # initialize empty list to store branches
+    branches: list = []
 
-# Helper function to backtrack the branch
-def find_branch(df, start_node):
-    branch = [start_node]
+    for _, row in df.iterrows():
+        branch: list = trace_branch(df, int(row['producer_unique_id']))
+        branches.append({
+            'producer_unique_id': int(row['producer_unique_id']),
+            'branch': branch
+        })
+
+    return pd.DataFrame(branches)
+
+
+def trace_branch(df: pd.DataFrame, start_node: int) -> list:
+    """
+    Given a dataframe of graph edges and a starting node, returns the branch of nodes that lead to the starting node.
+
+    For example:
+
+    | consumer_unique_id | producer_unique_id |
+    |--------------------|--------------------|
+    | 0                  | 1                  | # 1 is terminal producer node
+    | 0                  | 2                  |
+    | 0                  | 3                  |
+    | 2                  | 4                  | # 4 is terminal producer node
+    | 3                  | 5                  |
+    | 5                  | 6                  | # 6 is terminal producer node
+
+    For start_node = 6, the function returns [0, 3, 5, 6]
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
+    start_node : int
+        The integer indicating the starting node to trace back from.
+
+    Returns
+    -------
+    list
+        A list of integers indicating the branch of nodes that lead to the starting node.
+    """
+
+    branch: list = [start_node]
+
     while True:
-        previous_node = df[df['producer_unique_id'] == start_node]['consumer_unique_id']
+        previous_node: int = df[df['producer_unique_id'] == start_node]['consumer_unique_id']
         if previous_node.empty:
             break
-        start_node = previous_node.values[0]
+        start_node: int = previous_node.values[0]
         branch.insert(0, start_node)
+
     return branch
 
-# Identify terminal nodes
-terminal_nodes = set(df_edges['producer_unique_id']) - set(df_edges['consumer_unique_id'])
+df_branches = add_branch_information_to_dataframe(df_edges)
 
-# Backtrack and build the branch for each terminal node
-for node in terminal_nodes:
-    branch = find_branch(df_edges, node)
-    branches.append(branch)
+# df_nodes = pd.merge(df_nodes, df_branches, left_on='unique_id', right_on='producer_unique_id', how='left')
 
-# Create a new dataframe with the branches
-branch_df = pd.DataFrame({
-    'producer_unique_id': [branch[-1] for branch in branches],
-    'branch': branches
-})
+scope_1: float = 0
+scope_2: float = 0
+scope_3: float = 0
