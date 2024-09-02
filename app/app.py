@@ -44,6 +44,32 @@ dial = pn.indicators.Dial(
     bounds=(0, 5000)
 )
 
+# COLUMN 3
+
+diagram = pn.pane.SVG(
+    'app/_media/scope_splitting.svg',
+    alt_text='Diagrammatic Illustration of Scope Splitting',
+    link_url='https://en.wikipedia.org/wiki/Carbon_accounting',
+    width=500,
+)
+
+documentation_markdown_top = pn.pane.Markdown("""
+
+## Some Sub-Heading
+                                              
+The [WISER Project](https://wiser-climate.com)
+
+""")
+
+col3 = pn.Column(
+    '# Documentation',
+    documentation_markdown_top,
+    diagram,
+    styles=dict(background='WhiteSmoke')
+)
+
+
+
 # https://panel.holoviz.org/tutorials/basic/templates.html
 
 logos = pn.pane.SVG(
@@ -65,18 +91,20 @@ header = pn.Row(
     sizing_mode="stretch_width",
 )
 
+gspec = pn.GridSpec(ncols=3, sizing_mode='stretch_both')
+gspec[:,0] = dial
+gspec[:,1] = col3
+gspec[:,2] = pn.Spacer(styles=dict(background='red'))
 
 template = pn.template.MaterialTemplate(
     header=header,
-    title='Brightway WebApp',
+    title='Brightway WebApp (Carbon Accounting)',
     header_background='#2d853a',
     logo='app/_media/BW_white.svg',
 )
 
 template.main.append(
-    pn.Row(
-        dial
-    )
+    gspec
 )
 
 template.servable()
