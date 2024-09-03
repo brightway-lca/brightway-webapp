@@ -8,8 +8,11 @@ import pandas as pd
 from bw2data.backends.proxies import Activity
 from bw_graph_tools.graph_traversal import Node
 
-# bi.install_project(project_key="USEEIO-1.1", overwrite_existing=True)
-bd.projects.set_current("USEEIO-1.1")
+if 'USEEIO-1.1' not in bd.projects:
+    bi.install_project(project_key="USEEIO-1.1", overwrite_existing=True)
+    bd.projects.set_current("USEEIO-1.1")
+else:
+    bd.projects.set_current("USEEIO-1.1")
 
 useeio = bd.Database("USEEIO-1.1")
 
@@ -41,38 +44,29 @@ uid_electricity_process: int = electricity_process.as_dict()['id']
 
 graph_traversal_nodes: dict = graph_traversal['nodes']
 
-def nodes_to_dataframe(nodes: dict) -> pd.DataFrame:
-    """
-    Returns a dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
-
-    Parameters
-    ----------
-    nodes : dict
-        A dictionary of nodes in the graph traversal.
-        Can be created by selecting the 'nodes' key from the dictionary
-        returned by the function `bw_graph_tools.NewNodeEachVisitGraphTraversal.calculate()`.
-
-    Returns
-    -------
-    pd.DataFrame
-        A dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
-    """
-    list_for_df = []
-    for i in range(0, len(graph_traversal_nodes)-1):
-        current_node: Node = graph_traversal_nodes[i]
-        list_for_df.append(
+def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
+    list_of_row_dicts = []
+    for i in range(0, len(nodes)-1):
+        current_node: Node = nodes[i]
+        scope_1: bool = False
+        if current_node.unique_id == 0:
+            scope_1 = True
+        else:
+            pass
+        list_of_row_dicts.append(
             {
-                'unique_id': current_node.unique_id,
-                'name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
-                'cumulative_score': current_node.cumulative_score,
-                'direct_emissions_score': current_node.direct_emissions_score,
+                'UID': current_node.unique_id,
+                'Scope 1?': scope_1,
+                'Name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
+                'Cumulative': current_node.cumulative_score,
+                'Direct': current_node.direct_emissions_score,
+                'Depth': current_node.depth,
             }
         )
-    return pd.DataFrame(list_for_df)
+    return pd.DataFrame(list_of_row_dicts)
 
-
-df_nodes = pd.DataFrame([node for node in graph_traversal['nodes'].values()]).drop(0)
-df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
+df_nodes = nodes_dict_to_dataframe(graph_traversal_nodes)
+#df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
 
 
 def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -164,42 +158,33 @@ def trace_branch(df: pd.DataFrame, start_node: int) -> list:
 
     return branch
 
-df_branches = add_branch_information_to_dataframe(df_edges)
+#df_branches = add_branch_information_to_dataframe(df_edges)
 
-df_nodes = pd.merge(df_nodes, df_branches, left_on='unique_id', right_on='producer_unique_id', how='left')
+#df_nodes = pd.merge(df_nodes, df_branches, left_on='unique_id', right_on='producer_unique_id', how='left')
 
-def determine_scope_2_emissions(df: pd.DataFrame, uid) -> float:
-    """
-    Given a dataframe of graph nodes and the uid of the electricity production process,
-    returns the scope 2 emissions.
+def determine_scope_1_and_2_emissions(df: pd.DataFrame, uid_scope_2: int = 53) -> float:
+    dict_scope = {
+        'Scope 1': 0,
+        'Scope 2': 0,
+        'Scope 3': 0
+    }
 
-    | activity_datapackage_id | depth | cumulative_score |
-    |-------------------------|-------|------------------|
-    | 0                       | 1     | 100              |
-    | (...)                   | 2     | (...)            |
-    | 53                      | 2     | 50               | # scope 2 emissions
-    | (...)                   | (...) | (...)            |
+    dict_scope['Scope 1'] = df.loc[(df['Scope 1?'] == True)]['Direct'].values.sum()
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-       A dataframe of graph edges.
-       Must contain integer-type columns `activity_datapackage_id`, `depth`, `cumulative_score`.
+    try:
+        dict_scope['Scope 2'] = df.loc[
+            (df['Depth'] == 2)
+            &
+            (df['UID'] == uid_scope_2)
+        ]['Cumulative'].values[0]
+    except:
+        pass
 
-    Returns
-    -------
-    float
-        Scope 2 emissions value.
-    """
-    return df.loc[
-        (df['depth'] == 2)
-        &
-        (df['activity_datapackage_id'] == uid)
-    ]['cumulative_score'].values[0]
+    return dict_scope
 
-scope_1: float = df_nodes[df_nodes['unique_id'] == 0]['direct_emissions_score'][0]
-scope_2: float = determine_scope_2_emissions(df_nodes, uid_electricity_process)
-scope_3: float = lca.score - scope_1 - scope_2
-remainder: float = lca.score - df_nodes[df_nodes['unique_id'] == 0]['cumulative_score'][0]
+#scope_1: float = df_nodes[df_nodes['unique_id'] == 0]['direct_emissions_score'][0]
+#scope_2: float = determine_scope_2_emissions(df_nodes, uid_electricity_process)
+#scope_3: float = lca.score - scope_1 - scope_2
+#remainder: float = lca.score - df_nodes[df_nodes['unique_id'] == 0]['cumulative_score'][0]
 
 
