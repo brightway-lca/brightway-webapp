@@ -30,10 +30,10 @@ def brightway_wasm_database_storage_workaround() -> None:
     """
     Sets the Brightway project directory to `/tmp/.
     
-
     The JupyterLite file system currently does not support storage of SQL database files
     in directories other than `/tmp/`. This function sets the Brightway environment variable
     `BRIGHTWAY_DIR` to `/tmp/` to work around this limitation.
+    
     Notes
     -----
     - https://docs.brightway.dev/en/latest/content/faq/data_management.html#how-do-i-change-my-data-directory
