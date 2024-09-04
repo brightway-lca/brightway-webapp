@@ -1,28 +1,14 @@
 # %%
 import panel as pn
 
-pn.extension()
+pn.extension(notifications=True)
 
-my_list = pn.rx([])
 
-def create_list(event):
-    my_list = [1, 2, 3, 4, 5]
-    print(my_list)
+def show_notification(event):
+    pn.state.notifications.error('Sample error message!', duration=60000)
 
-def modify_list(event):
-    my_list.append(6)
-    print(my_list)
 
-widget_number = pn.indicators.Number(
-    name='Number',
-    value=0,
-    format='{value}'
-)
+button = pn.widgets.Button(name='Show Notification')
+button.on_click(show_notification)
 
-widget_button_create_list = pn.widgets.Button(name='Create List')
-widget_button_create_list.on_click(create_list)
-
-widget_button_modify_list = pn.widgets.Button(name='Modify List')
-widget_button_modify_list.on_click(modify_list)
-
-pn.Column(widget_button_create_list, widget_button_modify_list).servable()
+pn.Column(button).servable()
