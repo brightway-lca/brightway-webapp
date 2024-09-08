@@ -58,6 +58,7 @@ def check_for_useeio_brightway_project(event):
         pn.state.notifications.success('USEEIO database loaded!', duration=7000)
     else:
         pn.state.notifications.success('USEEIO database already loaded!', duration=7000)
+        pass
     bd.projects.set_current(name='USEEIO-1.1')
 
 

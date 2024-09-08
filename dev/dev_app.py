@@ -5,6 +5,7 @@ pn.extension(notifications=True)
 
 
 def show_notification(event):
+    
     pn.state.notifications.error('Sample error message!', duration=60000)
 
 
