@@ -501,7 +501,7 @@ col2 = pn.Column(
 header = pn.Row(
     pn.HSpacer(),
     pn.pane.SVG(
-        'PSI+ETHZ+WISER_white.svg',
+        'https://github.com/brightway-lca/brightway-webapp/blob/main/app/_media/PSI%2BETHZ%2BWISER_white.svg',
         height=50,
         margin=0,
         align="center"
@@ -514,7 +514,7 @@ template = pn.template.MaterialTemplate(
     header=header,
     title='Brightway WebApp (Carbon Accounting)',
     header_background='#2d853a', # green
-    logo='BW_white.svg',
+    logo='https://github.com/brightway-lca/brightway-webapp/blob/main/app/_media/BW_white.svg',
 )
 
 # https://panel.holoviz.org/reference/layouts/GridSpec.html
