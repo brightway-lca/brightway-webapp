@@ -8,4 +8,11 @@ Maintainance Team: [@michaelweinold](https://github.com/michaelweinold)
 
 ## Theory
 
-![Scope-Splitting Diagram](./app/_media/scope_splitting.svg)
+The[Greenhouse Gas Protocol organization](https://ghgprotocol.org)
+has defined _emission scopes_[^1].
+
+<img src="./app/_media/scope_splitting.svg" width="500">
+
+Figure 1: Diagrammatic representation of the carbon accounting logic used in the Brightway Web Application Demonstrator.
+
+[^1]: [Carbon Accounting (Wikipedia)](https://en.wikipedia.org/wiki/Carbon_accounting)
