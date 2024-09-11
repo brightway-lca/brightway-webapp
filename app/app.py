@@ -62,67 +62,6 @@ def check_for_useeio_brightway_project(event):
     bd.projects.set_current(name='USEEIO-1.1')
 
 
-def determine_scope_emissions(df: pd.DataFrame, uid_electricity: int = 53) -> float:
-    """
-    Given a dataframe of graph nodes and the uid of the electricity production process,
-    returns the scope 2 emissions.
-
-    | UID   | Scope 1 | Depth | Cumulative |
-    |-------|---------|-------|------------|
-    | 0     | True    | 1     | 100        |
-    | 1     | True    | 2     | 27         | # known to be scope 1 emissions
-    | 2     | False   | 2     | 12         | 
-    | (...) | (...)   | 2     | (...)      |
-    | 53    | False   | 2     | 6          | # scope 2 emissions
-    | (...) | (...)   | (...) | (...)      |
-
-    Since there is only a single electricity production process in the USEEIO database,
-    the default value of `uid_electricity` is set to 53:
-
-    ```
-    electricity_process: Activity = bd.utils.get_node(
-        database = 'USEEIO-1.1',
-        name = 'Electricity; at consumer',
-        location = 'United States',
-        type = 'process'
-    )
-    uid_electricity_process: int = electricity_process.as_dict()['id']
-    ```
-    
-    Parameters
-    ----------
-    df : pd.DataFrame
-       A dataframe of graph edges.
-       Must contain integer-type columns `activity_datapackage_id`, `depth`, `cumulative_score`.
-
-    Returns
-    -------
-    float
-        Scope 2 emissions value.
-    """
-    dict_scope = {
-        'Scope 1': 0,
-        'Scope 2': 0,
-        'Scope 3': 0
-    }
-
-    dict_scope['Scope 1'] = df.loc[
-        (df['Depth'] == 1)
-        &
-        (df['UID'] == 0)
-    ]['Cumulative'].values[0]
-
-    dict_scope
-
-    dict_scope['Scope 2'] = df.loc[
-        (df['Depth'] == 2)
-        &
-        (df['UID'] == uid)
-    ]['Cumulative'].values[0]
-
-    return dict_scope
-
-
 def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
     """
     Returns a dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
@@ -155,9 +94,116 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
                 'Cumulative': current_node.cumulative_score,
                 'Direct': current_node.direct_emissions_score,
                 'Depth': current_node.depth,
+                'activity_datapackage_id': current_node.activity_datapackage_id,
             }
         )
     return pd.DataFrame(list_of_row_dicts)
+
+
+def edges_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
+    """
+    To be added...
+    """
+    list_of_row_dicts = []
+    for i in range(0, len(nodes)-1):
+        current_node: Node = nodes[i]
+        list_of_row_dicts.append(
+            {
+                'consumer_unique_id': current_node.consumer_unique_id,
+                'producer_unique_id': current_node.producer_unique_id
+            }
+        )
+    return pd.DataFrame(list_of_row_dicts).drop(0)
+
+
+def trace_branch(df: pd.DataFrame, start_node: int) -> list:
+    """
+    Given a dataframe of graph edges and a starting node, returns the branch of nodes that lead to the starting node.
+
+    For example:
+
+    | consumer_unique_id | producer_unique_id |
+    |--------------------|--------------------|
+    | 0                  | 1                  | # 1 is terminal producer node
+    | 0                  | 2                  |
+    | 0                  | 3                  |
+    | 2                  | 4                  | # 4 is terminal producer node
+    | 3                  | 5                  |
+    | 5                  | 6                  | # 6 is terminal producer node
+
+    For start_node = 6, the function returns [0, 3, 5, 6]
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
+    start_node : int
+        The integer indicating the starting node to trace back from.
+
+    Returns
+    -------
+    list
+        A list of integers indicating the branch of nodes that lead to the starting node.
+    """
+
+    branch: list = [start_node]
+
+    while True:
+        previous_node: int = df[df['producer_unique_id'] == start_node]['consumer_unique_id']
+        if previous_node.empty:
+            break
+        start_node: int = previous_node.values[0]
+        branch.insert(0, start_node)
+
+    return branch
+
+
+def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds 'branch' information to terminal nodes in a dataframe of graph edges.
+
+    For example:
+
+    | consumer_unique_id | producer_unique_id |
+    |--------------------|--------------------|
+    | 0                  | 1                  | # 1 is terminal producer node
+    | 0                  | 2                  |
+    | 0                  | 3                  |
+    | 2                  | 4                  | # 4 is terminal producer node
+    | 3                  | 5                  |
+    | 5                  | 6                  | # 6 is terminal producer node
+
+    | consumer_unique_id | producer_unique_id | branch       |
+    |--------------------|--------------------|--------------|
+    | 0                  | 1                  | [0, 1]       |
+    | 0                  | 2                  | [0, 2]       |
+    | 0                  | 3                  | [0, 3]       |
+    | 2                  | 4                  | [0, 2, 4]    |
+    | 3                  | 5                  | [0, 3, 5]    |
+    | 5                  | 6                  | [0, 3, 5, 6] |
+
+    Parameters
+    ----------
+    df_edges : pd.DataFrame
+        A dataframe of graph edges.
+        Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
+
+    Returns
+    -------
+    pd.DataFrame
+        A dataframe of graph nodes with a column 'branch' that contains the branch of nodes that lead to the terminal producer node.
+    """
+    # initialize empty list to store branches
+    branches: list = []
+
+    for _, row in df.iterrows():
+        branch: list = trace_branch(df, int(row['producer_unique_id']))
+        branches.append({
+            'producer_unique_id': int(row['producer_unique_id']),
+            'Branch': branch
+        })
+
+    return pd.DataFrame(branches)
 
 
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
@@ -219,6 +265,7 @@ class panel_lca_class:
         self.graph_traversal_cutoff = 0.01
         self.graph_traversal = {}
         self.df_graph_traversal_nodes = None
+        self.df_graph_traversal_edges = None
 
     def set_db(self, event):
         """
@@ -286,9 +333,16 @@ class panel_lca_class:
     def perform_graph_traversal(self, event):
         self.graph_traversal: dict = bgt.NewNodeEachVisitGraphTraversal.calculate(self.lca, cutoff=self.graph_traversal_cutoff)
         self.df_graph_traversal_nodes: pd.DataFrame = nodes_dict_to_dataframe(self.graph_traversal['nodes'])
+        self.df_graph_traversal_edges: pd.DataFrame = edges_dict_to_dataframe(self.graph_traversal['edges'])
+        self.df_graph_traversal_edges = add_branch_information_to_dataframe(self.df_graph_traversal_edges)
+        self.df_graph_traversal_nodes = pd.merge(
+            self.df_graph_traversal_nodes,
+            self.df_graph_traversal_edges,
+            left_on='UID',
+            right_on='producer_unique_id',
+            how='left')
 
-
-    def determine_scope_1_and_2_emissions(self, event):
+    def determine_scope_1_and_2_emissions(self, event,  uid_electricity: int = 53,):
         """
         Determines the scope 1 and 2 emissions from the graph traversal nodes dataframe.
         """
@@ -304,7 +358,7 @@ class panel_lca_class:
             dict_scope['Scope 2'] = df.loc[
                 (df['Depth'] == 2)
                 &
-                (df['UID'] == uid_scope_2)
+                (df['activity_datapackage_id'] == uid_electricity)
             ]['Cumulative'].values[0]
         except:
             pass
@@ -326,6 +380,7 @@ def button_action_load_database(event):
     panel_lca_class_instance.set_dict_db_methods(event)
     widget_autocomplete_product.options = panel_lca_class_instance.list_db_products
     widget_select_method.options = list(panel_lca_class_instance.dict_db_methods.keys())
+    widget_select_method.value = "Impact Potential, GCC" # global warming as default value
 
 
 def button_action_perform_lca(event):
@@ -333,6 +388,9 @@ def button_action_perform_lca(event):
         pn.state.notifications.error('Please select a reference product first!', duration=5000)
         return
     else:
+        panel_lca_class_instance.df_graph_traversal_nodes = pd.DataFrame()
+        widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
+        widget_plotly_figure_piechart.object = create_plotly_figure_piechart({'null':0})
         pn.state.notifications.info('Calculating LCA score...', duration=5000)
         pass
     panel_lca_class_instance.set_chosen_activity(event)
@@ -365,7 +423,7 @@ def button_action_scope_analysis(event):
         pn.state.notifications.error('Please perform an LCA Calculation first!', duration=5000)
         return
     else:
-        if panel_lca_class_instance.df_graph_traversal_nodes is None:
+        if panel_lca_class_instance.df_graph_traversal_nodes.empty:
             pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
             pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
             perform_graph_traversal(event)
@@ -402,12 +460,13 @@ widget_autocomplete_product = pn.widgets.AutocompleteInput(
 widget_select_method = pn.widgets.Select( 
     name='Impact Assessment Method',
     options=[],
-    sizing_mode='stretch_width'
+    sizing_mode='stretch_width',
+
 )
 
 # https://panel.holoviz.org/reference/widgets/FloatInput.html
 widget_float_input_amount = pn.widgets.FloatInput( 
-    name='Amount of Reference Product',
+    name='(Monetary) Amount of Reference Product [USD]',
     value=1,
     step=1,
     start=0,
@@ -489,6 +548,7 @@ widget_tabulator = pn.widgets.Tabulator(
     selectable=False,
     formatters={'Scope 1?': BooleanFormatter()}, # tick/cross for boolean values
     editors={}, # is set later such that only a single column can be edited
+    hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
 )
 
 col2 = pn.Column(
@@ -504,7 +564,6 @@ window.open("https://github.com/brightway-lca/brightway-webapp/blob/main/README.
 """
 button_about = pn.widgets.Button(name="Learn more about this prototype...", button_type="success")
 button_about.js_on_click(code=code_open_window)
-
 
 header = pn.Row(
     button_about,

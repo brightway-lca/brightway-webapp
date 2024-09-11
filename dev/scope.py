@@ -65,98 +65,14 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
         )
     return pd.DataFrame(list_of_row_dicts)
 
+
+
+
 df_nodes = nodes_dict_to_dataframe(graph_traversal_nodes)
-#df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
+df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
 
 
-def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Adds 'branch' information to terminal nodes in a dataframe of graph edges.
 
-    For example:
-
-    | consumer_unique_id | producer_unique_id |
-    |--------------------|--------------------|
-    | 0                  | 1                  | # 1 is terminal producer node
-    | 0                  | 2                  |
-    | 0                  | 3                  |
-    | 2                  | 4                  | # 4 is terminal producer node
-    | 3                  | 5                  |
-    | 5                  | 6                  | # 6 is terminal producer node
-
-    | consumer_unique_id | producer_unique_id | branch       |
-    |--------------------|--------------------|--------------|
-    | 0                  | 1                  | [0, 1]       |
-    | 0                  | 2                  | [0, 2]       |
-    | 0                  | 3                  | [0, 3]       |
-    | 2                  | 4                  | [0, 2, 4]    |
-    | 3                  | 5                  | [0, 3, 5]    |
-    | 5                  | 6                  | [0, 3, 5, 6] |
-
-    Parameters
-    ----------
-    df_edges : pd.DataFrame
-        A dataframe of graph edges.
-        Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
-
-    Returns
-    -------
-    pd.DataFrame
-        A dataframe of graph nodes with a column 'branch' that contains the branch of nodes that lead to the terminal producer node.
-    """
-    # initialize empty list to store branches
-    branches: list = []
-
-    for _, row in df.iterrows():
-        branch: list = trace_branch(df, int(row['producer_unique_id']))
-        branches.append({
-            'producer_unique_id': int(row['producer_unique_id']),
-            'branch': branch
-        })
-
-    return pd.DataFrame(branches)
-
-
-def trace_branch(df: pd.DataFrame, start_node: int) -> list:
-    """
-    Given a dataframe of graph edges and a starting node, returns the branch of nodes that lead to the starting node.
-
-    For example:
-
-    | consumer_unique_id | producer_unique_id |
-    |--------------------|--------------------|
-    | 0                  | 1                  | # 1 is terminal producer node
-    | 0                  | 2                  |
-    | 0                  | 3                  |
-    | 2                  | 4                  | # 4 is terminal producer node
-    | 3                  | 5                  |
-    | 5                  | 6                  | # 6 is terminal producer node
-
-    For start_node = 6, the function returns [0, 3, 5, 6]
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
-    start_node : int
-        The integer indicating the starting node to trace back from.
-
-    Returns
-    -------
-    list
-        A list of integers indicating the branch of nodes that lead to the starting node.
-    """
-
-    branch: list = [start_node]
-
-    while True:
-        previous_node: int = df[df['producer_unique_id'] == start_node]['consumer_unique_id']
-        if previous_node.empty:
-            break
-        start_node: int = previous_node.values[0]
-        branch.insert(0, start_node)
-
-    return branch
 
 #df_branches = add_branch_information_to_dataframe(df_edges)
 
