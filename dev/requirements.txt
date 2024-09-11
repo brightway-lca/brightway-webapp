@@ -1,0 +1,3 @@
+bw2data==4.0.dev52
+bw2io==0.9.dev37
+lzma
