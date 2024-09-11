@@ -498,11 +498,20 @@ col2 = pn.Column(
 
 # SITE ######################################################################
 
+# https://discourse.holoviz.org/t/is-there-a-way-to-click-button-and-open-a-new-link-in-a-new-tab
+code_open_window = """
+window.open("https://github.com/brightway-lca/brightway-webapp/blob/main/README.md")
+"""
+button_about = pn.widgets.Button(name="Learn more about this prototype...", button_type="success")
+button_about.js_on_click(code=code_open_window)
+
+
 header = pn.Row(
+    button_about,
     pn.HSpacer(),
     pn.pane.SVG(
         'https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/PSI%2BETHZ%2BWISER_white.svg',
-        height=50,
+        #height=50,
         margin=0,
         align="center"
     ),
