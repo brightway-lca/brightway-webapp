@@ -723,6 +723,7 @@ template = pn.template.MaterialTemplate(
     title='Brightway WebApp (Carbon Accounting)',
     header_background='#2d853a', # green
     logo='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/logo_brightway_white.svg',
+    favicon='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/favicon.png',
 )
 
 # https://panel.holoviz.org/reference/layouts/GridSpec.html
