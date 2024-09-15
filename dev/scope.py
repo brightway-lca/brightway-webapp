@@ -23,9 +23,16 @@ cars_activity = bd.utils.get_node(
     location = 'United States'
 )
 
+electricity_activity = bd.utils.get_node(
+    database = 'USEEIO-1.1',
+    name = 'Electricity; at consumer',
+    type = 'product',
+    location = 'United States'
+)
+
 method_gcc = bd.Method(('Impact Potential', 'GCC'))
 lca = bc.LCA( 
-    demand={cars_activity: 1}, 
+    demand={electricity_activity: 1}, 
     method = method_gcc.name # attention here: it's not the Method object, just its name!!!
 ) 
 lca.lci() 
@@ -73,6 +80,26 @@ df_edges = pd.DataFrame(graph_traversal['edges']).drop(0)
 
 
 
+def edges_dict_to_dataframe(edges: dict) -> pd.DataFrame:
+    """
+    To be added...
+    """
+    if len(edges) < 2:
+        return pd.DataFrame()
+    else:
+        list_of_row_dicts = []
+        for i in range(0, len(edges)-1):
+            current_edge: Edge = edges[i]
+            list_of_row_dicts.append(
+                {
+                    'consumer_unique_id': current_edge.consumer_unique_id,
+                    'producer_unique_id': current_edge.producer_unique_id
+                }
+            )
+        return pd.DataFrame(list_of_row_dicts).drop(0)
+
+
+test = edges_dict_to_dataframe(graph_traversal['edges'])
 
 #df_branches = add_branch_information_to_dataframe(df_edges)
 
@@ -104,3 +131,5 @@ def determine_scope_1_and_2_emissions(df: pd.DataFrame, uid_scope_2: int = 53) -
 #remainder: float = lca.score - df_nodes[df_nodes['unique_id'] == 0]['cumulative_score'][0]
 
 
+
+# %%

@@ -23,6 +23,7 @@ import bw2calc as bc
 # type hints
 from bw2data.backends.proxies import Activity
 from bw_graph_tools.graph_traversal import Node
+from bw_graph_tools.graph_traversal import Edge
 
 
 def brightway_wasm_database_storage_workaround() -> None:
@@ -100,20 +101,23 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
     return pd.DataFrame(list_of_row_dicts)
 
 
-def edges_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
+def edges_dict_to_dataframe(edges: dict) -> pd.DataFrame:
     """
     To be added...
     """
-    list_of_row_dicts = []
-    for i in range(0, len(nodes)-1):
-        current_node: Node = nodes[i]
-        list_of_row_dicts.append(
-            {
-                'consumer_unique_id': current_node.consumer_unique_id,
-                'producer_unique_id': current_node.producer_unique_id
-            }
-        )
-    return pd.DataFrame(list_of_row_dicts).drop(0)
+    if len(edges) < 2:
+        return pd.DataFrame()
+    else:
+        list_of_row_dicts = []
+        for i in range(0, len(edges)-1):
+            current_edge: Edge = edges[i]
+            list_of_row_dicts.append(
+                {
+                    'consumer_unique_id': current_edge.consumer_unique_id,
+                    'producer_unique_id': current_edge.producer_unique_id
+                }
+            )
+        return pd.DataFrame(list_of_row_dicts).drop(0)
 
 
 def trace_branch(df: pd.DataFrame, start_node: int) -> list:
@@ -452,13 +456,16 @@ class panel_lca_class:
         self.graph_traversal: dict = bgt.NewNodeEachVisitGraphTraversal.calculate(self.lca, cutoff=self.graph_traversal_cutoff)
         self.df_graph_traversal_nodes: pd.DataFrame = nodes_dict_to_dataframe(self.graph_traversal['nodes'])
         self.df_graph_traversal_edges: pd.DataFrame = edges_dict_to_dataframe(self.graph_traversal['edges'])
-        self.df_graph_traversal_edges = add_branch_information_to_dataframe(self.df_graph_traversal_edges)
-        self.df_graph_traversal_nodes = pd.merge(
-            self.df_graph_traversal_nodes,
-            self.df_graph_traversal_edges,
-            left_on='UID',
-            right_on='producer_unique_id',
-            how='left')
+        if self.df_graph_traversal_edges.empty:
+            return
+        else:
+            self.df_graph_traversal_edges = add_branch_information_to_dataframe(self.df_graph_traversal_edges)
+            self.df_graph_traversal_nodes = pd.merge(
+                self.df_graph_traversal_nodes,
+                self.df_graph_traversal_edges,
+                left_on='UID',
+                right_on='producer_unique_id',
+                how='left')
 
 
     def determine_scope_1_and_2_emissions(self, event,  uid_electricity: int = 53,):
