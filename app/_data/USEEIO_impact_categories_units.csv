@@ -1,0 +1,19 @@
+﻿HRSP,kg PM2.5 eq
+OZON,kg O3 eq
+HNC,CTUh
+WATR,m3
+METL,kg
+EUTR,kg N eq
+HTOX,CTUh
+LAND,m2*yr
+NREN,MJ
+ETOX,CTUe
+PEST,kg
+REN,MJ
+MINE,kg
+GCC,kg CO2 eq
+ACID,kg SO2 eq
+HAPS,kg
+HC,CTUh
+SMOG,kg O3 eq
+ENRG,MJ

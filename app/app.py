@@ -257,8 +257,10 @@ class panel_lca_class:
         self.db = None
         self.list_db_products = []
         self.dict_db_methods = {}
+        self.list_db_methods = []
         self.chosen_activity = ''
         self.chosen_method = ''
+        self.chosen_method_unit = ''
         self.chosen_amount = 0
         self.lca = None
         self.scope_dict = {'Scope 1':0, 'Scope 2':0, 'Scope 3':0}
@@ -266,6 +268,7 @@ class panel_lca_class:
         self.graph_traversal = {}
         self.df_graph_traversal_nodes = None
         self.df_graph_traversal_edges = None
+
 
     def set_db(self, event):
         """
@@ -276,18 +279,119 @@ class panel_lca_class:
         check_for_useeio_brightway_project(event)
         self.db = bd.Database(self.db_name)
 
+
     def set_list_db_products(self, event):
         """
         Sets `list_db_products` to a list of product names from the database for use in the autocomplete widget.
         """
         self.list_db_products = [node['name'] for node in self.db if 'product' in node['type']]
     
-    def set_dict_db_methods(self, event):
+
+    def set_methods_objects(self, event):
         """
-        Sets `dict_db_methods` to a dictionary of 'method names': (method, tuples) from the database for use in the select widget.
+        dict_methods = {
+            'HRSP': ('Impact Potential', 'HRSP'),
+            'OZON': ('Impact Potential', 'OZON'),
+            ...
+        }
         """
-        self.dict_db_methods = {', '.join(i):i for i in bd.methods}
-    
+        dict_methods = {i[-1]:[i] for i in bd.methods}
+
+        """
+        dict_method_names = {
+            'HRSP': 'Human Health: Respiratory effects',
+            'OZON': 'Ozone Depletion',
+            ...
+        }
+        """
+        # hardcoded for better Pyodide performance
+        dict_methods_names = {
+            "HRSP": "Human Health - Respiratory Effects",
+            "OZON": "Ozone Depletion",
+            "HNC": "Human Health Noncancer",
+            "WATR": "Water",
+            "METL": "Metals",
+            "EUTR": "Eutrophication",
+            "HTOX": "Human Health Cancer and Noncancer",
+            "LAND": "Land",
+            "NREN": "Nonrenewable Energy",
+            "ETOX": "Freshwater Aquatic Ecotoxicity",
+            "PEST": "Pesticides",
+            "REN": "Renewable Energy",
+            "MINE": "Minerals and Metals",
+            "GCC": "Global Climate Change",
+            "ACID": "Acid Rain",
+            "HAPS": "Hazardous Air Pollutants",
+            "HC": "Human Health Cancer",
+            "SMOG": "Smog Formation",
+            "ENRG": "Energy"
+        }
+        # path_impact_categories_names: str = '../app/_data/USEEIO_impact_categories_names.csv'
+        # dict_methods_names = {}
+        # with open(path_impact_categories_names, mode='r', newline='', encoding='utf-8-sig') as file:
+        #    reader = csv.reader(file)
+        #    dict_methods_names = {rows[0]: rows[1] for rows in reader}
+
+        """
+        dict_methods_units = {
+            'HRSP': '[kg PM2.5 eq]',
+            'OZON': '[kg O3 eq]',
+            ...
+        }
+        """
+        # hardcoded for better Pyodide performance
+        dict_methods_units = {
+            "HRSP": "[kg PM2.5 eq]",
+            "OZON": "[kg O3 eq]",
+            "HNC": "[CTUh]",
+            "WATR": "[m3]",
+            "METL": "[kg]",
+            "EUTR": "[kg N eq]",
+            "HTOX": "[CTUh]",
+            "LAND": "[m2*yr]",
+            "NREN": "[MJ]",
+            "ETOX": "[CTUe]",
+            "PEST": "[kg]",
+            "REN": "[MJ]",
+            "MINE": "[kg]",
+            "GCC": "[kg CO2 eq]",
+            "ACID": "[kg SO2 eq]",
+            "HAPS": "[kg]",
+            "HC": "[CTUh]",
+            "SMOG": "[kg O3 eq]",
+            "ENRG": "[MJ]"
+        }
+        # path_impact_categories_units: str = '../app/_data/USEEIO_impact_categories_units.csv'
+        # dict_methods_units = {}
+        # with open(path_impact_categories_units, mode='r', newline='', encoding='utf-8-sig') as file:
+        #    reader = csv.reader(file)
+        #    dict_methods_units = {rows[0]: str('[')+rows[1]+str(']') for rows in reader}
+
+        """
+        dict_methods_enriched = {
+            'HRSP': [('Impact Potential', 'HRSP'), 'Human Health - Respiratory effects', '[kg PM2.5 eq]'],
+            'OZON': [('Impact Potential', 'OZON'), 'Ozone Depletion', '[kg O3 eq]'],
+            ...
+        }
+        """
+        dict_methods_enriched = {
+            key: [dict_methods[key][0], dict_methods_names[key], dict_methods_units[key]]
+            for key in dict_methods
+        }
+
+        """
+        list_methods_for_autocomplete = [
+            ('HRSP', 'Human Health: Respiratory effects', '[kg PM2.5 eq]'),
+            ('OZON', 'Ozone Depletion', '[kg O3 eq]'),
+            ...
+        ]
+        """
+        list_methods_for_autocomplete = [(key, value[1], value[2]) for key, value in dict_methods_enriched.items()]
+
+        self.dict_db_methods = dict_methods_enriched
+        self.list_db_methods = list_methods_for_autocomplete
+
+
     def set_chosen_activity(self, event):
         """
         Sets `chosen_activity` to the `bw2data.backends.proxies.Activity` object of the chosen product from the autocomplete widget.
@@ -299,17 +403,28 @@ class panel_lca_class:
             location = 'United States'
         )
 
-    def set_chosen_method(self, event):
+
+    def set_chosen_method_and_unit(self, event):
         """
         Sets `chosen_method` to the (tuple) corresponding to the chosen method string from the select widget.
+
+        Example:
+        --------
+        widget_select_method.value = ('HRSP', 'Human Health: Respiratory effects', '[kg PM2.5 eq]')
+        widget_select_method.value[0] = 'HRSP'
+        dict_db_methods = {'HRSP': [('Impact Potential', 'HRSP'), 'Human Health - Respiratory effects', '[kg PM2.5 eq]']}
+        dict_db_methods['HRSP'][0] = ('Impact Potential', 'HRSP') # which is the tuple that bd.Method needs
         """
-        self.chosen_method = bd.Method(self.dict_db_methods[widget_select_method.value])
+        self.chosen_method = bd.Method(self.dict_db_methods[widget_select_method.value[0]][0])
+        self.chosen_method_unit = widget_select_method.value[2]
+
 
     def set_chosen_amount(self, event):
         """
         Sets `chosen_amount` to the float value from the float input widget.
         """
         self.chosen_amount = widget_float_input_amount.value
+
 
     def perform_lca(self, event):
         """
@@ -323,12 +438,14 @@ class panel_lca_class:
         self.lca.lci()
         self.lca.lcia()
 
+
     def set_graph_traversal_cutoff(self, event):
         """
         Sets the `graph_traversal_cutoff` attribute to the float value from the float slider widget.
         Note that the value is divided by 100 to convert from percentage to decimal.
         """
         self.graph_traversal_cutoff = widget_float_slider_cutoff.value / 100
+
 
     def perform_graph_traversal(self, event):
         self.graph_traversal: dict = bgt.NewNodeEachVisitGraphTraversal.calculate(self.lca, cutoff=self.graph_traversal_cutoff)
@@ -341,6 +458,7 @@ class panel_lca_class:
             left_on='UID',
             right_on='producer_unique_id',
             how='left')
+
 
     def determine_scope_1_and_2_emissions(self, event,  uid_electricity: int = 53,):
         """
@@ -365,6 +483,7 @@ class panel_lca_class:
 
         self.scope_dict = dict_scope
 
+
     def determine_scope_3_emissions(self, event):
         self.scope_dict['Scope 3'] = self.lca.score - self.scope_dict['Scope 1'] - self.scope_dict['Scope 2']
 
@@ -377,9 +496,9 @@ panel_lca_class_instance = panel_lca_class()
 def button_action_load_database(event):
     panel_lca_class_instance.set_db(event)
     panel_lca_class_instance.set_list_db_products(event)
-    panel_lca_class_instance.set_dict_db_methods(event)
+    panel_lca_class_instance.set_methods_objects(event)
     widget_autocomplete_product.options = panel_lca_class_instance.list_db_products
-    widget_select_method.options = list(panel_lca_class_instance.dict_db_methods.keys())
+    widget_select_method.options = panel_lca_class_instance.list_db_methods
     widget_select_method.value = "Impact Potential, GCC" # global warming as default value
 
 
@@ -394,11 +513,12 @@ def button_action_perform_lca(event):
         pn.state.notifications.info('Calculating LCA score...', duration=5000)
         pass
     panel_lca_class_instance.set_chosen_activity(event)
-    panel_lca_class_instance.set_chosen_method(event)
+    panel_lca_class_instance.set_chosen_method_and_unit(event)
     panel_lca_class_instance.set_chosen_amount(event)
     panel_lca_class_instance.perform_lca(event)
     pn.state.notifications.success('Completed LCA score calculation!', duration=5000)
     widget_number_lca_score.value = panel_lca_class_instance.lca.score
+    widget_number_lca_score.format = f'{{value:,.3f}} {panel_lca_class_instance.chosen_method_unit}'
 
 
 def perform_graph_traversal(event):
@@ -508,11 +628,11 @@ widget_button_graph.on_click(button_action_scope_analysis)
 
 # https://panel.holoviz.org/reference/indicators/Number.html
 widget_number_lca_score = pn.indicators.Number(
-    name='LCA Score',
+    name='LCA Impact Score',
     font_size='30pt',
     title_size='20pt',
     value=0,
-    format='{value:,.5f}',
+    format='{value:,.3f}',
     margin=0
 )
 
