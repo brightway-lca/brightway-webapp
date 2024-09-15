@@ -702,7 +702,7 @@ header = pn.Row(
     button_about,
     pn.HSpacer(),
     pn.pane.SVG(
-        'https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/PSI%2BETHZ%2BWISER_white.svg',
+        'https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/logo_PSI-ETHZ-WISER_white.svg',
         #height=50,
         margin=0,
         align="center"
@@ -715,7 +715,7 @@ template = pn.template.MaterialTemplate(
     header=header,
     title='Brightway WebApp (Carbon Accounting)',
     header_background='#2d853a', # green
-    logo='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/BW_white.svg',
+    logo='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/logo_brightway_white.svg',
 )
 
 # https://panel.holoviz.org/reference/layouts/GridSpec.html
