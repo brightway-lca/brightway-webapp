@@ -477,7 +477,7 @@ class panel_lca_class:
                 (df['Depth'] == 2)
                 &
                 (df['activity_datapackage_id'] == uid_electricity)
-            ]['Cumulative'].values[0]
+            ]['Direct'].values[0]
         except:
             pass
 
