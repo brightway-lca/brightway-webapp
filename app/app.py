@@ -264,7 +264,7 @@ class panel_lca_class:
         self.chosen_amount = 0
         self.lca = None
         self.scope_dict = {'Scope 1':0, 'Scope 2':0, 'Scope 3':0}
-        self.graph_traversal_cutoff = 0.01
+        self.graph_traversal_cutoff = 1
         self.graph_traversal = {}
         self.df_graph_traversal_nodes = None
         self.df_graph_traversal_edges = None
@@ -448,6 +448,7 @@ class panel_lca_class:
 
 
     def perform_graph_traversal(self, event):
+        widget_cutoff_indicator_statictext.value = self.graph_traversal_cutoff * 100
         self.graph_traversal: dict = bgt.NewNodeEachVisitGraphTraversal.calculate(self.lca, cutoff=self.graph_traversal_cutoff)
         self.df_graph_traversal_nodes: pd.DataFrame = nodes_dict_to_dataframe(self.graph_traversal['nodes'])
         self.df_graph_traversal_edges: pd.DataFrame = edges_dict_to_dataframe(self.graph_traversal['edges'])
@@ -499,7 +500,7 @@ def button_action_load_database(event):
     panel_lca_class_instance.set_methods_objects(event)
     widget_autocomplete_product.options = panel_lca_class_instance.list_db_products
     widget_select_method.options = panel_lca_class_instance.list_db_methods
-    widget_select_method.value = "Impact Potential, GCC" # global warming as default value
+    widget_select_method.value = [item for item in panel_lca_class_instance.list_db_methods if 'GCC' in item[0]][0] # global warming as default value
 
 
 def button_action_perform_lca(event):
@@ -522,6 +523,7 @@ def button_action_perform_lca(event):
 
 
 def perform_graph_traversal(event):
+    panel_lca_class_instance.set_graph_traversal_cutoff(event)
     panel_lca_class_instance.perform_graph_traversal(event)
     widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
     column_editors = {
@@ -551,11 +553,15 @@ def button_action_scope_analysis(event):
             pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
             pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
         else:
-            panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
-            pn.state.notifications.info('Re-Performing Scope Analysis...', duration=5000)
-            perform_scope_analysis(event)
-            pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
-
+            if widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff:
+                pn.state.notifications.info('Re-Performing Graph Traversal...', duration=5000)
+                perform_graph_traversal(event)
+            else:
+                panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
+                pn.state.notifications.info('Re-Performing Scope Analysis...', duration=5000)
+                perform_scope_analysis(event)
+                pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
+                
 
 # https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_load_db = pn.widgets.Button( 
@@ -606,7 +612,7 @@ widget_button_lca.on_click(button_action_perform_lca)
 widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
     name='Graph Traversal Cut-Off [%]',
     start=1,
-    end=99,
+    end=50,
     step=1,
     value=10,
     sizing_mode='stretch_width'
@@ -671,8 +677,15 @@ widget_tabulator = pn.widgets.Tabulator(
     hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
 )
 
+# https://panel.holoviz.org/reference/widgets/StaticText.html
+widget_cutoff_indicator_statictext = pn.widgets.StaticText(
+    name='Includes processes responsible for amount of emissions [%]',
+    value=None
+)
+
 col2 = pn.Column(
     '## Table of Upstream Processes',
+    widget_cutoff_indicator_statictext,
     widget_tabulator
 )
 
