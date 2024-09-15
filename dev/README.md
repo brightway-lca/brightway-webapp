@@ -1,7 +1,7 @@
 ## Conversion to Pyodide
 
 ```bash
-panel convert app/app.py --to pyodide-worker --out index --requirements app/requirements.txt
+panel convert app/index.py --to pyodide-worker --out pyodide --requirements app/requirements.txt
 ```
 
 ## Testing Pyodide Application
