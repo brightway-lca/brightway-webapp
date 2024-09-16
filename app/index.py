@@ -527,9 +527,12 @@ def button_action_perform_lca(event):
     pn.state.notifications.success('Completed LCA score calculation!', duration=5000)
     widget_number_lca_score.value = panel_lca_class_instance.lca.score
     widget_number_lca_score.format = f'{{value:,.3f}} {panel_lca_class_instance.chosen_method_unit}'
+    perform_graph_traversal(event)
+    perform_scope_analysis(event)
 
 
 def perform_graph_traversal(event):
+    pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
     panel_lca_class_instance.set_graph_traversal_cutoff(event)
     panel_lca_class_instance.perform_graph_traversal(event)
     widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
@@ -539,12 +542,15 @@ def perform_graph_traversal(event):
         if colname != 'Scope 1?'
     }
     widget_tabulator.editors = column_editors
+    pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
 
 def perform_scope_analysis(event):
+    pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
     panel_lca_class_instance.determine_scope_1_and_2_emissions(event)
     panel_lca_class_instance.determine_scope_3_emissions(event)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
+    pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
 
 
 def button_action_scope_analysis(event):
@@ -553,21 +559,14 @@ def button_action_scope_analysis(event):
         return
     else:
         if panel_lca_class_instance.df_graph_traversal_nodes.empty:
-            pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
-            pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
             perform_graph_traversal(event)
             perform_scope_analysis(event)
-            pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
-            pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
         else:
             if widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff:
-                pn.state.notifications.info('Re-Performing Graph Traversal...', duration=5000)
                 perform_graph_traversal(event)
             else:
                 panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
-                pn.state.notifications.info('Re-Performing Scope Analysis...', duration=5000)
                 perform_scope_analysis(event)
-                pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
                 
 
 # https://panel.holoviz.org/reference/widgets/Button.html
