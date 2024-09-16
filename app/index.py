@@ -682,6 +682,8 @@ widget_tabulator = pn.widgets.Tabulator(
     formatters={'Scope 1?': BooleanFormatter()}, # tick/cross for boolean values
     editors={}, # is set later such that only a single column can be edited
     hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
+    layout='fit_data_stretch',
+    sizing_mode='stretch_width'
 )
 
 # https://panel.holoviz.org/reference/widgets/StaticText.html
