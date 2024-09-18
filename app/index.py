@@ -211,11 +211,23 @@ def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
+    marker_colors = []
+    for label in data_dict.keys():
+        if label == 'Scope 1':
+            marker_colors.append('#33cc33')  # Color for Scope 1
+        elif label == 'Scope 2':
+            marker_colors.append('#ffcc00')  # Color for Scope 2
+        elif label == 'Scope 3':
+            marker_colors.append('#3366ff')  # Color for Scope 3
+        else:
+            marker_colors.append('#000000')  # Default color for other labels
+
     plotly_figure = plotly.graph_objects.Figure(
         data=[
             plotly.graph_objects.Pie(
-                labels=[label for label in data_dict.keys()],
-                values=[value for value in data_dict.values()]
+                labels=list(data_dict.keys()),
+                values=list(data_dict.values()),
+                marker=dict(colors=marker_colors)  # Set the colors for the pie chart
             )
         ]
     )
@@ -564,6 +576,7 @@ def button_action_scope_analysis(event):
         else:
             if widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff:
                 perform_graph_traversal(event)
+                perform_scope_analysis(event)
             else:
                 panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
                 perform_scope_analysis(event)
@@ -631,7 +644,7 @@ A cut-off of 10% means that only those processes responsible or 90% of impact wi
         
 # https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_graph = pn.widgets.Button(
-    name='Perform Scope Analysis',
+    name='Re-Perform Scope Analysis',
     icon='chart-donut-3',
     button_type='primary',
     sizing_mode='stretch_width'

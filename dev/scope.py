@@ -30,9 +30,16 @@ electricity_activity = bd.utils.get_node(
     location = 'United States'
 )
 
+bike_act = bd.utils.get_node(
+    database = 'USEEIO-1.1',
+    name = 'Motorcycle, bicycle, and parts; at manufacturer',
+    type = 'product',
+    location = 'United States'
+)
+
 method_gcc = bd.Method(('Impact Potential', 'GCC'))
 lca = bc.LCA( 
-    demand={electricity_activity: 1}, 
+    demand={bike_act: 1}, 
     method = method_gcc.name # attention here: it's not the Method object, just its name!!!
 ) 
 lca.lci() 
@@ -68,6 +75,7 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
                 'Cumulative': current_node.cumulative_score,
                 'Direct': current_node.direct_emissions_score,
                 'Depth': current_node.depth,
+                'activity_datapackage_id': current_node.activity_datapackage_id
             }
         )
     return pd.DataFrame(list_of_row_dicts)
@@ -118,8 +126,8 @@ def determine_scope_1_and_2_emissions(df: pd.DataFrame, uid_scope_2: int = 53) -
         dict_scope['Scope 2'] = df.loc[
             (df['Depth'] == 2)
             &
-            (df['UID'] == uid_scope_2)
-        ]['Cumulative'].values[0]
+            (df['activity_datapackage_id'] == uid_scope_2)
+        ]['Direct'].values[0]
     except:
         pass
 
