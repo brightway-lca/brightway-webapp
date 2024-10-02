@@ -80,10 +80,13 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
         A dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
     """
     list_of_row_dicts = []
-    for i in range(0, len(nodes)):
-        current_node: Node = nodes[i]
+    for current_node in nodes.values():
+
         scope_1: bool = False
-        if current_node.unique_id == 0:
+
+        if current_node.unique_id == -1:
+            continue
+        elif current_node.unique_id == 0:
             scope_1 = True
         else:
             pass
