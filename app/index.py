@@ -80,7 +80,7 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
         A dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
     """
     list_of_row_dicts = []
-    for i in range(0, len(nodes)-1):
+    for i in range(0, len(nodes)):
         current_node: Node = nodes[i]
         scope_1: bool = False
         if current_node.unique_id == 0:
@@ -122,7 +122,7 @@ def edges_dict_to_dataframe(edges: dict) -> pd.DataFrame:
 
 def trace_branch(df: pd.DataFrame, start_node: int) -> list:
     """
-    Given a dataframe of graph edges and a starting node, returns the branch of nodes that lead to the starting node.
+    Given a dataframe of graph edges and a "starting node" (producer_unique_id), returns the branch of nodes that lead to the starting node.
 
     For example:
 
@@ -142,7 +142,7 @@ def trace_branch(df: pd.DataFrame, start_node: int) -> list:
     df : pd.DataFrame
         Dataframe of graph edges. Must contain integer-type columns 'consumer_unique_id' and 'producer_unique_id'.
     start_node : int
-        The integer indicating the starting node to trace back from.
+        The integer indicating the producer_unique_id starting node to trace back from.
 
     Returns
     -------
@@ -162,7 +162,7 @@ def trace_branch(df: pd.DataFrame, start_node: int) -> list:
     return branch
 
 
-def add_branch_information_to_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+def add_branch_information_to_edges_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Adds 'branch' information to terminal nodes in a dataframe of graph edges.
 
@@ -471,7 +471,7 @@ class panel_lca_class:
         if self.df_graph_traversal_edges.empty:
             return
         else:
-            self.df_graph_traversal_edges = add_branch_information_to_dataframe(self.df_graph_traversal_edges)
+            self.df_graph_traversal_edges = add_branch_information_to_edges_dataframe(self.df_graph_traversal_edges)
             self.df_graph_traversal_nodes = pd.merge(
                 self.df_graph_traversal_nodes,
                 self.df_graph_traversal_edges,

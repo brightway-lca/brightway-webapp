@@ -166,3 +166,5 @@ cython_debug/
 
 # development environment
 bw_webapp_dev/
+
+.vscode
