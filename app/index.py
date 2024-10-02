@@ -80,10 +80,13 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
         A dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
     """
     list_of_row_dicts = []
-    for i in range(0, len(nodes)):
-        current_node: Node = nodes[i]
+    for current_node in nodes.values():
+
         scope_1: bool = False
-        if current_node.unique_id == 0:
+
+        if current_node.unique_id == -1:
+            continue
+        elif current_node.unique_id == 0:
             scope_1 = True
         else:
             pass
@@ -101,7 +104,7 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
     return pd.DataFrame(list_of_row_dicts)
 
 
-def edges_dict_to_dataframe(edges: dict) -> pd.DataFrame:
+def edges_dict_to_dataframe(edges: list) -> pd.DataFrame:
     """
     To be added...
     """
@@ -109,8 +112,7 @@ def edges_dict_to_dataframe(edges: dict) -> pd.DataFrame:
         return pd.DataFrame()
     else:
         list_of_row_dicts = []
-        for i in range(0, len(edges)-1):
-            current_edge: Edge = edges[i]
+        for current_edge in edges:
             list_of_row_dicts.append(
                 {
                     'consumer_unique_id': current_edge.consumer_unique_id,
