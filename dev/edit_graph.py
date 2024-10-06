@@ -26,11 +26,6 @@ data_after_user_input = {
 
 df_after_user_input = pd.DataFrame(data_after_user_input)
 
-"""
-    
-
-    'emissions_intensity_override': [False, False, True, False],
-"""
 
 def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -87,4 +82,23 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Output DataFrame.
     """
-    
+
+    """
+    dict_user_data = {
+        1: 0.25,
+        4: 0.18
+    }
+    """
+
+    df_user_input_only = df[df['production_user'].notna()]
+    dict_user_input = dict(zip(df_user_input_only['uid'], df_user_input_only['production_user']))
+
+    def multiplier(row):
+        for branch_uid in reversed(row['branch']):
+            if branch_uid in dict_user_input:
+                return row['production'] * dict_user_input[branch_uid]
+        return row['production']
+
+    df['production'] = df.apply(multiplier, axis=1)
+
+    return df
