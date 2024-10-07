@@ -15,7 +15,7 @@ async function startApplication() {
   self.pyodide.globals.set("sendPatch", sendPatch);
   console.log("Loaded!");
   await self.pyodide.loadPackage("micropip");
-  const env_spec = ['https://cdn.holoviz.org/panel/wheels/bokeh-3.5.2-py3-none-any.whl', 'https://cdn.holoviz.org/panel/1.5.1/dist/wheels/panel-1.5.1-py3-none-any.whl', 'pyodide-http==0.2.1', 'bw2data==4.0.dev52', 'bw2io==0.9.dev37', 'bw2calc==2.0.dev20', 'bw-graph-tools==0.4.1', 'plotly==5.24.0', 'lzma']
+  const env_spec = ['https://cdn.holoviz.org/panel/wheels/bokeh-3.5.2-py3-none-any.whl', 'https://cdn.holoviz.org/panel/1.5.1/dist/wheels/panel-1.5.1-py3-none-any.whl', 'pyodide-http==0.2.1', 'bw2data==4.0.dev57', 'bw2io==0.9.dev37', 'bw2calc==2.0.dev23', 'bw-graph-tools==0.4.1', 'plotly==5.24.0', 'lzma']
   for (const pkg of env_spec) {
     let pkg_name;
     if (pkg.endsWith('.whl')) {
