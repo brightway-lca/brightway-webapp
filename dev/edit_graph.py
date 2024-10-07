@@ -46,7 +46,7 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     | 5   | 0.05       | NaN             | [0,1,2,4,5]   |
     | 6   | 0.01       | NaN             | [0,1,2,4,5,6] |
 
-    The function returns a DataFrame of the kind:
+    the function returns a DataFrame of the kind:
 
     | uid | production        | branch        |
     |-----|-------------------|---------------|
@@ -57,6 +57,9 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     | 4   | 0.18              | [0,1,2,4]     |
     | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
     | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
+
+    Notes
+    -----
 
     As we can see, the function updates production only
     for those nodes upstream of a node with 'production_user':
@@ -83,15 +86,18 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         Output DataFrame.
     """
 
+    df_user_input_only = df[df['production_user'].notna()]
+    dict_user_input = dict(zip(df_user_input_only['uid'], df_user_input_only['production_user']))
+
     """
+    For the example DataFrame from the docstrings above,
+    the dict_user_input would be:
+
     dict_user_data = {
         1: 0.25,
         4: 0.18
     }
     """
-
-    df_user_input_only = df[df['production_user'].notna()]
-    dict_user_input = dict(zip(df_user_input_only['uid'], df_user_input_only['production_user']))
 
     def multiplier(row):
         for branch_uid in reversed(row['branch']):
@@ -102,3 +108,69 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     df['production'] = df.apply(multiplier, axis=1)
 
     return df
+
+
+def compute_emissions_intensity(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Computes the environmental burden intensity for each node in the DataFrame.
+
+    For instance, given a DataFrame of the kind:
+
+    | uid | production | direct_emissions |
+    |-----|------------|------------------|
+    | 0   | 1          | 1.5              |
+    | 1   | 0.5        | 1.1              |
+    | 2   | 0.2        | 0.14             |
+
+    the function returns a DataFrame of the kind:
+
+    | uid | production | direct_emissions | emissions_intensity |
+    |-----|------------|------------------|---------------------|
+    | 0   | 1          | 1.5              | 1.5 / 1             |
+    | 1   | 0.5        | 1.1              | 1.1 / 0.5           |
+    | 2   | 0.2        | 0.14             | 0.14 / 0.2          |
+
+    Notes
+    -----
+
+    The environmental burden intensity is obtained by dividing
+    the direct emissions of a node by the production amount of the node.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame. Must have the columns 'production' and 'direct_emissions'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output DataFrame.
+
+    """
+
+    df['emissions_intensity'] = df['direct_emissions'] / df['production']
+
+    return df
+
+
+def recompute_direct_emissions(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Recomputes the direct emissions of each node in the DataFrame.
+    """
+    
+    df['direct_emissions'] = df['production'] * df['emissions_intensity']
+    
+    return df
+
+def 
+
+
+def highlight_edited_tabulator_rows(pd.DataFrame) -> pd.DataFrame:
+    """
+    def highlight(s):
+    if s.duration > 5:
+        return ['background-color: yellow'] * len(s)
+
+    https://panel.holoviz.org/reference/widgets/Tabulator.html#styling
+    https://stackoverflow.com/a/48306463
+    """

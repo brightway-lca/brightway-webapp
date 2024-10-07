@@ -284,7 +284,8 @@ class panel_lca_class:
         self.scope_dict = {'Scope 1':0, 'Scope 2':0, 'Scope 3':0}
         self.graph_traversal_cutoff = 1
         self.graph_traversal = {}
-        self.df_graph_traversal_nodes = None
+        self.df_graph_traversal_nodes_original = None
+        self.df_graph_traversal_nodes_user_input = None
         self.df_graph_traversal_edges = None
 
 
@@ -508,6 +509,9 @@ class panel_lca_class:
 
     def determine_scope_3_emissions(self, event):
         self.scope_dict['Scope 3'] = self.lca.score - self.scope_dict['Scope 1'] - self.scope_dict['Scope 2']
+
+
+    def XXXXXXX
 
 
 brightway_wasm_database_storage_workaround()
