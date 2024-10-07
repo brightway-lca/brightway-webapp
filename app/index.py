@@ -95,8 +95,10 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
                 'UID': current_node.unique_id,
                 'Scope 1?': scope_1,
                 'Name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
-                'Cumulative': current_node.cumulative_score,
-                'Direct': current_node.direct_emissions_score,
+                'SupplyAmount': current_node.supply_amount,
+                'BurdenIntensity': current_node.supply_amount / current_node.direct_emissions_score,
+                'Burden(Cumulative)': current_node.cumulative_score,
+                'Burden(Direct)': current_node.direct_emissions_score,
                 'Depth': current_node.depth,
                 'activity_datapackage_id': current_node.activity_datapackage_id,
             }
@@ -212,6 +214,138 @@ def add_branch_information_to_edges_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(branches)
 
 
+def create_user_input_column(
+        df_original: pd.DataFrame,
+        df_user_input: pd.DataFrame,
+        column_name: str
+    ) -> pd.DataFrame:
+    """
+    Creates a new column in the 'original' DataFrame with the user input data.
+
+    For instance, given an "original" DataFrame of the kind:
+
+    | UID | SupplyAmount |
+    |-----|--------------|
+    | 0   | 1            |
+    | 1   | 0.5          |
+    | 2   | 0.2          |
+
+    and a "user input" DataFrame of the kind:
+
+    | UID | SupplyAmount |
+    |-----|--------------|
+    | 0   | NaN          |
+    | 1   | 0.25         |
+    | 2   | NaN          |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount | USERSupplyAmount |
+    |-----|--------------|------------------|
+    | 0   | 1            | NaN              |
+    | 1   | 0.5          | 0.25             |
+    | 2   | 0.2          | NaN              |
+
+    Parameters
+    ----------
+    df_original : pd.DataFrame
+        Original DataFrame.
+
+    df_user_input : pd.DataFrame
+        User input DataFrame.
+    """
+    
+    df_original = df_original.set_index('UID')
+    df_user_input = df_user_input.set_index('UID')
+
+    df_original[f'USER{column_name}'] = df_user_input[column_name]
+
+    return df_original.reset_index()
+
+
+def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the production amount of all nodes which are upstream
+    of a node with user-supplied production amount.
+    If an upstream node has half the use-supplied production amount,
+    then the production amount of all downstream node is also halved.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | SupplyAmount | USERSupplyAmount | Branch        |
+    |-----|--------------|------------------|---------------|
+    | 0   | 1            | NaN              | []            |
+    | 1   | 0.5          | 0.25             | [0,1]         |
+    | 2   | 0.2          | NaN              | [0,1,2]       |
+    | 3   | 0.1          | NaN              | [0,3]         |
+    | 4   | 0.1          | 0.18             | [0,1,2,4]     |
+    | 5   | 0.05         | NaN              | [0,1,2,4,5]   |
+    | 6   | 0.01         | NaN              | [0,1,2,4,5,6] |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount      | Branch        |
+    |-----|-------------------|---------------|
+    | 0   | 1                 | []            |
+    | 1   | 0.25              | [0,1]         |
+    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
+    | 3   | 0.1               | [0,3]         |
+    | 4   | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
+    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
+
+    Notes
+    -----
+
+    As we can see, the function updates production only
+    for those nodes upstream of a node with 'production_user':
+
+    - Node 2 is upstream of node 1, which has a 'production_user' value.
+    - Node 3 is NOT upstream of node 1. It is upstream of node 0, but node 0 does not have a 'production_user' value.
+
+    As we can see, the function always takes the "most recent"
+    'production_user' value upstream of a node:
+
+    - Node 5 is upstream of node 4, which has a 'production_user' value.
+    - Node 4 is upstream of node 1, which also has a 'production_user' value.
+
+    In this case, the function takes the 'production_user' value of node 4, not of node 1.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame. Must have the columns 'production', 'production_user' and 'branch'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output DataFrame.
+    """
+
+    df_user_input_only = df[df['USERSupplyAmount'].notna()]
+    dict_user_input = dict(zip(df_user_input_only['UID'], df_user_input_only['USERSupplyAmount']))
+
+    """
+    For the example DataFrame from the docstrings above,
+    the dict_user_input would be:
+
+    dict_user_data = {
+        1: 0.25,
+        4: 0.18
+    }
+    """
+
+    def multiplier(row):
+        for branch_uid in reversed(row['Branch']):
+            if branch_uid in dict_user_input:
+                return row['SupplyAmount'] * dict_user_input[branch_uid]
+        return row['SupplyAmount']
+
+    df['SupplyAmount'] = df.apply(multiplier, axis=1)
+
+    return df
+
+
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
     marker_colors = []
     for label in data_dict.keys():
@@ -284,9 +418,11 @@ class panel_lca_class:
         self.scope_dict = {'Scope 1':0, 'Scope 2':0, 'Scope 3':0}
         self.graph_traversal_cutoff = 1
         self.graph_traversal = {}
-        self.df_graph_traversal_nodes_original = None
-        self.df_graph_traversal_nodes_user_input = None
+        self.df_graph_traversal_nodes = None
         self.df_graph_traversal_edges = None
+        self.df_tabulator_from_traversal = None
+        self.df_tabulator_from_user = None
+        self.df_tabulator = None # nota bene: gets updated automatically when cells in the tabulator are edited # https://panel.holoviz.org/reference/widgets/Tabulator.html#editors-editing
 
 
     def set_db(self, event):
@@ -475,7 +611,7 @@ class panel_lca_class:
             return
         else:
             self.df_graph_traversal_edges = add_branch_information_to_edges_dataframe(self.df_graph_traversal_edges)
-            self.df_graph_traversal_nodes = pd.merge(
+            self.df_tabulator_from_traversal = pd.merge(
                 self.df_graph_traversal_nodes,
                 self.df_graph_traversal_edges,
                 left_on='UID',
@@ -483,35 +619,36 @@ class panel_lca_class:
                 how='left')
 
 
-    def determine_scope_1_and_2_emissions(self, event,  uid_electricity: int = 53,):
+    def determine_scope_emissions(
+            self,
+            df: pd.DataFrame,
+            uid_electricity: int = 53
+        ):
         """
-        Determines the scope 1 and 2 emissions from the graph traversal nodes dataframe.
+        Determines the scope 1/2/3 emissions from the graph traversal nodes dataframe.
         """
         dict_scope = {
             'Scope 1': 0,
             'Scope 2': 0,
             'Scope 3': 0
         }
-        df = self.df_graph_traversal_nodes
-        dict_scope['Scope 1'] = df.loc[(df['Scope 1?'] == True)]['Direct'].values.sum()
+        burden_total: float = 0
 
+        burden_total = df.loc[(df['UID'] == 0)]['Burden(Cumulative)'].values.sum()
+        
+        dict_scope['Scope 1'] = df.loc[(df['Scope 1?'] == True)]['Burden(Direct)'].values.sum()
         try:
             dict_scope['Scope 2'] = df.loc[
                 (df['Depth'] == 2)
                 &
                 (df['activity_datapackage_id'] == uid_electricity)
-            ]['Direct'].values[0]
-        except:
+            ]['Burden(Direct)'].values[0]
+        except: # it is possible that no Scope 2 processes are in the DataFrame
             pass
 
+        dict_scope['Scope 3'] = burden_total - dict_scope['Scope 1'] - dict_scope['Scope 2']
+
         self.scope_dict = dict_scope
-
-
-    def determine_scope_3_emissions(self, event):
-        self.scope_dict['Scope 3'] = self.lca.score - self.scope_dict['Scope 1'] - self.scope_dict['Scope 2']
-
-
-    def XXXXXXX
 
 
 brightway_wasm_database_storage_workaround()
@@ -534,7 +671,7 @@ def button_action_perform_lca(event):
         return
     else:
         panel_lca_class_instance.df_graph_traversal_nodes = pd.DataFrame()
-        widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
+        #widget_tabulator.value = panel_lca_class_instance.df_tabulator_for_display # REMOVE LATER??? WHAT DID THIS EVEN DO?
         widget_plotly_figure_piechart.object = create_plotly_figure_piechart({'null':0})
         pn.state.notifications.info('Calculating LCA score...', duration=5000)
         pass
@@ -553,11 +690,12 @@ def perform_graph_traversal(event):
     pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
     panel_lca_class_instance.set_graph_traversal_cutoff(event)
     panel_lca_class_instance.perform_graph_traversal(event)
-    widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
+    panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_traversal.copy()
+    widget_tabulator.value = panel_lca_class_instance.df_tabulator
     column_editors = {
         colname : {'type': 'editable', 'value': True}
-        for colname in panel_lca_class_instance.df_graph_traversal_nodes.columns
-        if colname != 'Scope 1?'
+        for colname in panel_lca_class_instance.df_tabulator.columns
+        if colname not in ['Scope 1?', 'SupplyAmount', 'BurdenIntensity'] # WHYYYY is this resulting in revered logic?
     }
     widget_tabulator.editors = column_editors
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
@@ -565,10 +703,19 @@ def perform_graph_traversal(event):
 
 def perform_scope_analysis(event):
     pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
-    panel_lca_class_instance.determine_scope_1_and_2_emissions(event)
-    panel_lca_class_instance.determine_scope_3_emissions(event)
+    panel_lca_class_instance.determine_scope_emissions(df=panel_lca_class_instance.df_tabulator_from_traversal)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
+
+
+def update_dataframe_based_on_user_input(event):
+    pn.state.notifications.info('Updating Supply Chain based on User Input...', duration=5000)
+    panel_lca_class_instance.df_tabulator_from_traversal = create_user_input_column(
+        df_original=panel_lca_class_instance.df_tabulator_from_traversal,
+        df_user_input=panel_lca_class_instance.df_tabulator,
+        column_name='SupplyAmount',
+    )
+    panel_lca_class_instance.df_tabulator_from_traversal = update_production_based_on_user_data(event)
 
 
 def button_action_scope_analysis(event):
@@ -576,17 +723,24 @@ def button_action_scope_analysis(event):
         pn.state.notifications.error('Please perform an LCA Calculation first!', duration=5000)
         return
     else:
-        if panel_lca_class_instance.df_graph_traversal_nodes.empty:
+        panel_lca_class_instance.df_tabulator_from_user = widget_tabulator.value
+        # if the user has not yet performed graph traversal, or changed the cutoff value,
+        # then perform graph traversal and scope analysis
+        if (
+            panel_lca_class_instance.df_graph_traversal_nodes.empty or
+            widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff
+        ):
             perform_graph_traversal(event)
             perform_scope_analysis(event)
-        else:
-            if widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff:
-                perform_graph_traversal(event)
-                perform_scope_analysis(event)
-            else:
-                panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
-                perform_scope_analysis(event)
-                
+        # if the user has overriden either supply or burden intensity values in the table,
+        # then update upstream values based on user input
+        elif (
+            (panel_lca_class_instance.df_tabulator['SupplyAmount'] != panel_lca_class_instance.df_tabulator_from_traversal['SupplyAmount']).any() or 
+            (panel_lca_class_instance.df_tabulator['BurdenIntensity'] != panel_lca_class_instance.df_tabulator_from_traversal['BurdenIntensity']).any()
+        ):
+            update_dataframe_based_on_user_input(event)
+            perform_scope_analysis(event)
+
 
 # https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_load_db = pn.widgets.Button( 

@@ -27,6 +27,55 @@ data_after_user_input = {
 df_after_user_input = pd.DataFrame(data_after_user_input)
 
 
+def create_user_input_column(
+        df_original: pd.DataFrame,
+        df_user_input: pd.DataFrame,
+        column_name: str
+    ) -> pd.DataFrame:
+    """
+    Creates a new column in the 'original' DataFrame with the user input data.
+
+    For instance, given an "original" DataFrame of the kind:
+
+    | UID | SupplyAmount |
+    |-----|--------------|
+    | 0   | 1            |
+    | 1   | 0.5          |
+    | 2   | 0.2          |
+
+    and a "user input" DataFrame of the kind:
+
+    | UID | SupplyAmount |
+    |-----|--------------|
+    | 0   | NaN          |
+    | 1   | 0.25         |
+    | 2   | NaN          |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount | USERSupplyAmount |
+    |-----|--------------|------------------|
+    | 0   | 1            | NaN              |
+    | 1   | 0.5          | 0.25             |
+    | 2   | 0.2          | NaN              |
+
+    Parameters
+    ----------
+    df_original : pd.DataFrame
+        Original DataFrame.
+
+    df_user_input : pd.DataFrame
+        User input DataFrame.
+    """
+    
+    df_original = df_original.set_index('uid')
+    df_user_input = df_user_input.set_index('uid')
+
+    df_original[f'USER{column_name}'] = df_user_input[column_name]
+
+    return df_original.reset_index()
+
+
 def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
@@ -36,19 +85,19 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     For instance, given a DataFrame of the kind:
 
-    | uid | production | production_user | branch        |
-    |-----|------------|-----------------|---------------|
-    | 0   | 1          | NaN             | []            |
-    | 1   | 0.5        | 0.25            | [0,1]         |
-    | 2   | 0.2        | NaN             | [0,1,2]       |
-    | 3   | 0.1        | NaN             | [0,3]         |
-    | 4   | 0.1        | 0.18            | [0,1,2,4]     |
-    | 5   | 0.05       | NaN             | [0,1,2,4,5]   |
-    | 6   | 0.01       | NaN             | [0,1,2,4,5,6] |
+    | UID | SupplyAmount | USERSupplyAmount | Branch        |
+    |-----|--------------|------------------|---------------|
+    | 0   | 1            | NaN              | []            |
+    | 1   | 0.5          | 0.25             | [0,1]         |
+    | 2   | 0.2          | NaN              | [0,1,2]       |
+    | 3   | 0.1          | NaN              | [0,3]         |
+    | 4   | 0.1          | 0.18             | [0,1,2,4]     |
+    | 5   | 0.05         | NaN              | [0,1,2,4,5]   |
+    | 6   | 0.01         | NaN              | [0,1,2,4,5,6] |
 
     the function returns a DataFrame of the kind:
 
-    | uid | production        | branch        |
+    | UID | SupplyAmount      | Branch        |
     |-----|-------------------|---------------|
     | 0   | 1                 | []            |
     | 1   | 0.25              | [0,1]         |
@@ -86,8 +135,8 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         Output DataFrame.
     """
 
-    df_user_input_only = df[df['production_user'].notna()]
-    dict_user_input = dict(zip(df_user_input_only['uid'], df_user_input_only['production_user']))
+    df_user_input_only = df[df['USERSupplyAmount'].notna()]
+    dict_user_input = dict(zip(df_user_input_only['UID'], df_user_input_only['USERSupplyAmount']))
 
     """
     For the example DataFrame from the docstrings above,
@@ -100,55 +149,12 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     def multiplier(row):
-        for branch_uid in reversed(row['branch']):
+        for branch_uid in reversed(row['Branch']):
             if branch_uid in dict_user_input:
-                return row['production'] * dict_user_input[branch_uid]
-        return row['production']
+                return row['SupplyAmount'] * dict_user_input[branch_uid]
+        return row['SupplyAmount']
 
-    df['production'] = df.apply(multiplier, axis=1)
-
-    return df
-
-
-def compute_emissions_intensity(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Computes the environmental burden intensity for each node in the DataFrame.
-
-    For instance, given a DataFrame of the kind:
-
-    | uid | production | direct_emissions |
-    |-----|------------|------------------|
-    | 0   | 1          | 1.5              |
-    | 1   | 0.5        | 1.1              |
-    | 2   | 0.2        | 0.14             |
-
-    the function returns a DataFrame of the kind:
-
-    | uid | production | direct_emissions | emissions_intensity |
-    |-----|------------|------------------|---------------------|
-    | 0   | 1          | 1.5              | 1.5 / 1             |
-    | 1   | 0.5        | 1.1              | 1.1 / 0.5           |
-    | 2   | 0.2        | 0.14             | 0.14 / 0.2          |
-
-    Notes
-    -----
-
-    The environmental burden intensity is obtained by dividing
-    the direct emissions of a node by the production amount of the node.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame. Must have the columns 'production' and 'direct_emissions'.
-
-    Returns
-    -------
-    pd.DataFrame
-        Output DataFrame.
-
-    """
-
-    df['emissions_intensity'] = df['direct_emissions'] / df['production']
+    df['SupplyAmount'] = df.apply(multiplier, axis=1)
 
     return df
 
