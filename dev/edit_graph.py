@@ -1,5 +1,6 @@
 # %%
 import pandas as pd
+import numpy as np
 
 data_original = {
     'uid': [0, 1, 2, 3],
@@ -25,6 +26,15 @@ data_after_user_input = {
 }
 
 df_after_user_input = pd.DataFrame(data_after_user_input)
+
+data_example = {
+    'UID': [0, 1, 2, 3, 4, 5, 6],
+    'SupplyAmount': [1000, 500, 70, 100, 90, 10, 5],
+    'USERSupplyAmount': [np.NaN, 200, np.NaN, np.NaN, 0, np.NaN, np.NaN],
+    'Branch': [np.NaN, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
+}
+
+df_example = pd.DataFrame(data_example)
 
 
 def create_user_input_column(
@@ -87,7 +97,7 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     | UID | SupplyAmount | USERSupplyAmount | Branch        |
     |-----|--------------|------------------|---------------|
-    | 0   | 1            | NaN              | []            |
+    | 0   | 1            | NaN              | NaN           |
     | 1   | 0.5          | 0.25             | [0,1]         |
     | 2   | 0.2          | NaN              | [0,1,2]       |
     | 3   | 0.1          | NaN              | [0,3]         |
@@ -99,7 +109,7 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     | UID | SupplyAmount      | Branch        |
     |-----|-------------------|---------------|
-    | 0   | 1                 | []            |
+    | 0   | 1                 | NaN           |
     | 1   | 0.25              | [0,1]         |
     | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
     | 3   | 0.1               | [0,3]         |
@@ -136,8 +146,13 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     df_user_input_only = df[df['USERSupplyAmount'].notna()]
-    dict_user_input = dict(zip(df_user_input_only['UID'], df_user_input_only['USERSupplyAmount']))
-
+    dict_user_input = dict(
+        zip(
+            df_user_input_only['UID'],
+            df_user_input_only['USERSupplyAmount'] / df_user_input_only['SupplyAmount']
+        )
+    )
+    
     """
     For the example DataFrame from the docstrings above,
     the dict_user_input would be:
@@ -147,14 +162,17 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         4: 0.18
     }
     """
-
+    df = df.copy(deep=True)
     def multiplier(row):
+        if not isinstance(row['Branch'], list):
+            return row['SupplyAmount']
         for branch_uid in reversed(row['Branch']):
             if branch_uid in dict_user_input:
                 return row['SupplyAmount'] * dict_user_input[branch_uid]
         return row['SupplyAmount']
 
     df['SupplyAmount'] = df.apply(multiplier, axis=1)
+    df.drop(columns=['USERSupplyAmount'], inplace=True)
 
     return df
 
@@ -168,10 +186,8 @@ def recompute_direct_emissions(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-def 
 
-
-def highlight_edited_tabulator_rows(pd.DataFrame) -> pd.DataFrame:
+def highlight_edited_tabulator_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     def highlight(s):
     if s.duration > 5:

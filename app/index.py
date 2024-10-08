@@ -321,10 +321,15 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Output DataFrame.
     """
-
+    df = df.copy(deep=True)
     df_user_input_only = df[df['USERSupplyAmount'].notna()]
-    dict_user_input = dict(zip(df_user_input_only['UID'], df_user_input_only['USERSupplyAmount']))
-
+    dict_user_input = dict(
+        zip(
+            df_user_input_only['UID'],
+            df_user_input_only['USERSupplyAmount'] / df_user_input_only['SupplyAmount']
+        )
+    )
+    
     """
     For the example DataFrame from the docstrings above,
     the dict_user_input would be:
@@ -336,12 +341,15 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
 
     def multiplier(row):
+        if not isinstance(row['Branch'], list):
+            return row['SupplyAmount']
         for branch_uid in reversed(row['Branch']):
             if branch_uid in dict_user_input:
                 return row['SupplyAmount'] * dict_user_input[branch_uid]
         return row['SupplyAmount']
 
     df['SupplyAmount'] = df.apply(multiplier, axis=1)
+    df.drop(columns=['USERSupplyAmount'], inplace=True)
 
     return df
 
@@ -710,20 +718,21 @@ def perform_scope_analysis(event):
 
 def update_dataframe_based_on_user_input(event):
     pn.state.notifications.info('Updating Supply Chain based on User Input...', duration=5000)
-    panel_lca_class_instance.df_tabulator_from_traversal = create_user_input_column(
+    panel_lca_class_instance.df_tabulator_from_user = create_user_input_column(
         df_original=panel_lca_class_instance.df_tabulator_from_traversal,
-        df_user_input=panel_lca_class_instance.df_tabulator,
+        df_user_input=panel_lca_class_instance.df_tabulator_from_user,
         column_name='SupplyAmount',
     )
-    panel_lca_class_instance.df_tabulator_from_traversal = update_production_based_on_user_data(event)
-
+    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
+    widget_tabulator.value = panel_lca_class_instance.df_tabulator
+    pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
 
 def button_action_scope_analysis(event):
     if panel_lca_class_instance.lca is None:
         pn.state.notifications.error('Please perform an LCA Calculation first!', duration=5000)
         return
     else:
-        panel_lca_class_instance.df_tabulator_from_user = widget_tabulator.value
         # if the user has not yet performed graph traversal, or changed the cutoff value,
         # then perform graph traversal and scope analysis
         if (
@@ -738,6 +747,7 @@ def button_action_scope_analysis(event):
             (panel_lca_class_instance.df_tabulator['SupplyAmount'] != panel_lca_class_instance.df_tabulator_from_traversal['SupplyAmount']).any() or 
             (panel_lca_class_instance.df_tabulator['BurdenIntensity'] != panel_lca_class_instance.df_tabulator_from_traversal['BurdenIntensity']).any()
         ):
+            panel_lca_class_instance.df_tabulator_from_user = panel_lca_class_instance.df_tabulator.copy()
             update_dataframe_based_on_user_input(event)
             perform_scope_analysis(event)
 
