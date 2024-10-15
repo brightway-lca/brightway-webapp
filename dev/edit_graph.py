@@ -2,39 +2,22 @@
 import pandas as pd
 import numpy as np
 
+
 data_original = {
-    'uid': [0, 1, 2, 3],
-    'description': ['cardboard', 'paper', 'wood', 'electricity'],
-    'production': [1, 0.5, 0.2, 0.1],
-    'emissions_intensity': [1.5, 2.2, 0.7, 0.2],
-    'branch': [[], [0,1], [0,1,2], [0,1,2,3]]
+    'UID': [0, 1, 2, 3, 4, 5, 6],
+    'SupplyAmount': [1000, 500, 70, 100, 90, 10, 5],
+    'Branch': [np.NaN, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
 }
 
 df_original = pd.DataFrame(data_original)
 
-def compute_direct_emissions(df):
-    df['direct_emissions'] = df['production'] * df['emissions_intensity']
-    return df
-
-data_after_user_input = {
-    'uid': [0, 1, 2, 3, 4],
-    'description': ['cardboard', 'paper', 'wood', 'electricity', 'oil'],
-    'production': [1, 0.5, 0.2, 0.1, 0.05],
-    'production_user': [np.NaN, 0.25, np.NaN, 0.18, np.NaN],
-    'emissions_intensity': [1.5, 2.2, 0.1, 0.2, 1],
-    'branch': [[], [0,1], [0,1,2], [0,1,2,3], [0,1,2,3,4]]
-}
-
-df_after_user_input = pd.DataFrame(data_after_user_input)
-
-data_example = {
+data_user_input = {
     'UID': [0, 1, 2, 3, 4, 5, 6],
-    'SupplyAmount': [1000, 500, 70, 100, 90, 10, 5],
-    'USERSupplyAmount': [np.NaN, 200, np.NaN, np.NaN, 0, np.NaN, np.NaN],
+    'SupplyAmount': [1000, 0, 70, 100, 40, 10, 5],
     'Branch': [np.NaN, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
 }
 
-df_example = pd.DataFrame(data_example)
+df_user_input = pd.DataFrame(data_user_input)
 
 
 def create_user_input_column(
@@ -43,7 +26,8 @@ def create_user_input_column(
         column_name: str
     ) -> pd.DataFrame:
     """
-    Creates a new column in the 'original' DataFrame with the user input data.
+    Creates a new column in the 'original' DataFrame where only the
+    user-supplied values are kept. The other values are replaced by NaN.
 
     For instance, given an "original" DataFrame of the kind:
 
@@ -57,17 +41,17 @@ def create_user_input_column(
 
     | UID | SupplyAmount |
     |-----|--------------|
-    | 0   | NaN          |
-    | 1   | 0.25         |
-    | 2   | NaN          |
+    | 0   | 1            |
+    | 1   | 0            |
+    | 2   | 0.2          |
 
     the function returns a DataFrame of the kind:
 
-    | UID | SupplyAmount | USERSupplyAmount |
-    |-----|--------------|------------------|
-    | 0   | 1            | NaN              |
-    | 1   | 0.5          | 0.25             |
-    | 2   | 0.2          | NaN              |
+    | UID | SupplyAmount | SupplyAmount_USER |
+    |-----|--------------|-------------------|
+    | 0   | 1            | NaN               |
+    | 1   | 0.5          | 0                 |
+    | 2   | 0.2          | NaN               |
 
     Parameters
     ----------
@@ -78,15 +62,27 @@ def create_user_input_column(
         User input DataFrame.
     """
     
-    df_original = df_original.set_index('uid')
-    df_user_input = df_user_input.set_index('uid')
+    df_merged = pd.merge(
+        df_original,
+        df_user_input[['UID', column_name]],
+        on='UID',
+        how='left',
+        suffixes=('', '_USER')
+    )
 
-    df_original[f'USER{column_name}'] = df_user_input[column_name]
+    df_merged[f'{column_name}_USER'] = np.where(
+        df_merged['SupplyAmount_USER'] != df_merged['SupplyAmount'],
+        df_merged['SupplyAmount_USER'],
+        np.nan
+    )
 
-    return df_original.reset_index()
+    return df_merged
 
 
-def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+def update_production_based_on_user_data(
+        df: pd.DataFrame,
+        column_name: str
+    ) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
     of a node with user-supplied production amount.
@@ -95,15 +91,15 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     For instance, given a DataFrame of the kind:
 
-    | UID | SupplyAmount | USERSupplyAmount | Branch        |
-    |-----|--------------|------------------|---------------|
-    | 0   | 1            | NaN              | NaN           |
-    | 1   | 0.5          | 0.25             | [0,1]         |
-    | 2   | 0.2          | NaN              | [0,1,2]       |
-    | 3   | 0.1          | NaN              | [0,3]         |
-    | 4   | 0.1          | 0.18             | [0,1,2,4]     |
-    | 5   | 0.05         | NaN              | [0,1,2,4,5]   |
-    | 6   | 0.01         | NaN              | [0,1,2,4,5,6] |
+    | UID | SupplyAmount | SupplyAmount_USER | Branch        |
+    |-----|--------------|-------------------|---------------|
+    | 0   | 1            | NaN               | NaN           |
+    | 1   | 0.5          | 0.25              | [0,1]         |
+    | 2   | 0.2          | NaN               | [0,1,2]       |
+    | 3   | 0.1          | NaN               | [0,3]         |
+    | 4   | 0.1          | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05         | NaN               | [0,1,2,4,5]   |
+    | 6   | 0.01         | NaN               | [0,1,2,4,5,6] |
 
     the function returns a DataFrame of the kind:
 
@@ -145,54 +141,36 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         Output DataFrame.
     """
 
-    df_user_input_only = df[df['USERSupplyAmount'].notna()]
-    dict_user_input = dict(
-        zip(
-            df_user_input_only['UID'],
-            df_user_input_only['USERSupplyAmount'] / df_user_input_only['SupplyAmount']
-        )
-    )
+    df_filtered = df[~df[f'{column_name}_USER'].isna()]
+    dict_user_input = df_filtered.set_index('UID').to_dict()[f'{column_name}_USER']
     
     """
     For the example DataFrame from the docstrings above,
     the dict_user_input would be:
 
-    dict_user_data = {
+    dict_user_input = {
         1: 0.25,
         4: 0.18
     }
     """
+
     df = df.copy(deep=True)
     def multiplier(row):
         if not isinstance(row['Branch'], list):
-            return row['SupplyAmount']
-        for branch_uid in reversed(row['Branch']):
-            if branch_uid in dict_user_input:
-                return row['SupplyAmount'] * dict_user_input[branch_uid]
-        return row['SupplyAmount']
+            return row[column_name]
+        for branch_UID in reversed(row['Branch']):
+            if branch_UID in dict_user_input:
+                return row[column_name] * dict_user_input[branch_UID]
+        return row[column_name]
 
-    df['SupplyAmount'] = df.apply(multiplier, axis=1)
-    df.drop(columns=['USERSupplyAmount'], inplace=True)
+    df[column_name] = df.apply(multiplier, axis=1)
+    df.drop(columns=[f'{column_name}_USER'], inplace=True)
 
-    return df
-
-
-def recompute_direct_emissions(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Recomputes the direct emissions of each node in the DataFrame.
-    """
-    
-    df['direct_emissions'] = df['production'] * df['emissions_intensity']
-    
-    return df
+    return df, dict_user_input
 
 
-def highlight_edited_tabulator_rows(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    def highlight(s):
-    if s.duration > 5:
-        return ['background-color: yellow'] * len(s)
-
-    https://panel.holoviz.org/reference/widgets/Tabulator.html#styling
-    https://stackoverflow.com/a/48306463
-    """
+df_user_col = create_user_input_column(
+    df_original=df_original,
+    df_user_input=df_user_input,
+    column_name='SupplyAmount'
+)

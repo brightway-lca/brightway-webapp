@@ -431,6 +431,7 @@ class panel_lca_class:
         self.df_tabulator_from_traversal = None
         self.df_tabulator_from_user = None
         self.df_tabulator = None # nota bene: gets updated automatically when cells in the tabulator are edited # https://panel.holoviz.org/reference/widgets/Tabulator.html#editors-editing
+        self.bool_user_provided_data = False
 
 
     def set_db(self, event):
@@ -696,6 +697,7 @@ def button_action_perform_lca(event):
 
 def perform_graph_traversal(event):
     pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
+    panel_lca_class_instance.bool_user_provided_data = False
     panel_lca_class_instance.set_graph_traversal_cutoff(event)
     panel_lca_class_instance.perform_graph_traversal(event)
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_traversal.copy()
@@ -741,12 +743,18 @@ def button_action_scope_analysis(event):
         ):
             perform_graph_traversal(event)
             perform_scope_analysis(event)
+        # if the user has already provided input data, we reset the dataframe
+        elif panel_lca_class_instance.bool_user_provided_data == True:
+            pn.state.notifications.error('You are not allowed to edit a table which has already been re-computed on your input! Resetting the table...', duration=5000)
+            perform_graph_traversal(event)
+            perform_scope_analysis(event)
         # if the user has overriden either supply or burden intensity values in the table,
         # then update upstream values based on user input
         elif (
             (panel_lca_class_instance.df_tabulator['SupplyAmount'] != panel_lca_class_instance.df_tabulator_from_traversal['SupplyAmount']).any() or 
             (panel_lca_class_instance.df_tabulator['BurdenIntensity'] != panel_lca_class_instance.df_tabulator_from_traversal['BurdenIntensity']).any()
         ):
+            panel_lca_class_instance.bool_user_provided_data = True
             panel_lca_class_instance.df_tabulator_from_user = panel_lca_class_instance.df_tabulator.copy()
             update_dataframe_based_on_user_input(event)
             perform_scope_analysis(event)
