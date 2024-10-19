@@ -782,6 +782,11 @@ widget_autocomplete_product = pn.widgets.AutocompleteInput(
     sizing_mode='stretch_width'
 )
 
+# https://panel.holoviz.org/reference/panes/Markdown.html
+markdown_method_documentation = pn.pane.Markdown("""
+The impact assessment methods are documented [in Table 3](https://www.nature.com/articles/s41597-022-01293-7/tables/4) of the [USEEIO release article](https://doi.org/10.1038/s41597-022-01293-7).
+""")
+
 # https://panel.holoviz.org/reference/widgets/Select.html
 widget_select_method = pn.widgets.Select( 
     name='Impact Assessment Method',
@@ -820,7 +825,7 @@ widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
 
 # https://panel.holoviz.org/reference/panes/Markdown.html
 markdown_cutoff_documentation = pn.pane.Markdown("""
-A cut-off of 10% means that only those processes responsible or 90% of impact will be computed. A lower cut-off therefore results in a longer calculation, which yields a larger amount of processes.
+[A cut-off of 10%](https://docs.brightway.dev/projects/graphtools/en/latest/content/api/bw_graph_tools/graph_traversal/new_node_each_visit/index.html) means that only those processes responsible or 90% of impact will be computed.
 """)
         
 # https://panel.holoviz.org/reference/widgets/Button.html
@@ -852,6 +857,7 @@ col1 = pn.Column(
     '## USEEIO Database Query',
     widget_button_load_db,
     widget_autocomplete_product,
+    markdown_method_documentation,
     widget_select_method,
     widget_float_input_amount,
     markdown_cutoff_documentation,
