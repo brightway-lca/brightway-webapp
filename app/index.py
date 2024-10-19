@@ -10,6 +10,7 @@ import plotly
 
 # data science
 import pandas as pd
+import numpy as np
 
 # system
 import os
@@ -63,7 +64,10 @@ def check_for_useeio_brightway_project(event):
     bd.projects.set_current(name='USEEIO-1.1')
 
 
-def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
+def nodes_dict_to_dataframe(
+        nodes: dict,
+        uid_electricity: int = 53 # hardcoded for USEEIO
+    ) -> pd.DataFrame:
     """
     Returns a dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
 
@@ -82,18 +86,19 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
     list_of_row_dicts = []
     for current_node in nodes.values():
 
-        scope_1: bool = False
-
+        scope: int = 3
         if current_node.unique_id == -1:
             continue
         elif current_node.unique_id == 0:
-            scope_1 = True
+            scope = 1
+        elif current_node.activity_datapackage_id == uid_electricity:
+            scope = 2
         else:
             pass
         list_of_row_dicts.append(
             {
                 'UID': current_node.unique_id,
-                'Scope 1?': scope_1,
+                'Scope': scope,
                 'Name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
                 'SupplyAmount': current_node.supply_amount,
                 'BurdenIntensity': current_node.supply_amount / current_node.direct_emissions_score,
@@ -220,7 +225,8 @@ def create_user_input_column(
         column_name: str
     ) -> pd.DataFrame:
     """
-    Creates a new column in the 'original' DataFrame with the user input data.
+    Creates a new column in the 'original' DataFrame where only the
+    user-supplied values are kept. The other values are replaced by NaN.
 
     For instance, given an "original" DataFrame of the kind:
 
@@ -234,17 +240,17 @@ def create_user_input_column(
 
     | UID | SupplyAmount |
     |-----|--------------|
-    | 0   | NaN          |
-    | 1   | 0.25         |
-    | 2   | NaN          |
+    | 0   | 1            |
+    | 1   | 0            |
+    | 2   | 0.2          |
 
     the function returns a DataFrame of the kind:
 
-    | UID | SupplyAmount | USERSupplyAmount |
-    |-----|--------------|------------------|
-    | 0   | 1            | NaN              |
-    | 1   | 0.5          | 0.25             |
-    | 2   | 0.2          | NaN              |
+    | UID | SupplyAmount | SupplyAmount_USER |
+    |-----|--------------|-------------------|
+    | 0   | 1            | NaN               |
+    | 1   | 0.5          | 0                 |
+    | 2   | 0.2          | NaN               |
 
     Parameters
     ----------
@@ -255,15 +261,27 @@ def create_user_input_column(
         User input DataFrame.
     """
     
-    df_original = df_original.set_index('UID')
-    df_user_input = df_user_input.set_index('UID')
+    df_merged = pd.merge(
+        df_original,
+        df_user_input[['UID', column_name]],
+        on='UID',
+        how='left',
+        suffixes=('', '_USER')
+    )
 
-    df_original[f'USER{column_name}'] = df_user_input[column_name]
+    df_merged[f'{column_name}_USER'] = np.where(
+        df_merged['SupplyAmount_USER'] != df_merged['SupplyAmount'],
+        df_merged['SupplyAmount_USER'],
+        np.nan
+    )
 
-    return df_original.reset_index()
+    return df_merged
 
 
-def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+def update_production_based_on_user_data(
+        df: pd.DataFrame,
+        column_name: str
+    ) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
     of a node with user-supplied production amount.
@@ -272,21 +290,21 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     For instance, given a DataFrame of the kind:
 
-    | UID | SupplyAmount | USERSupplyAmount | Branch        |
-    |-----|--------------|------------------|---------------|
-    | 0   | 1            | NaN              | []            |
-    | 1   | 0.5          | 0.25             | [0,1]         |
-    | 2   | 0.2          | NaN              | [0,1,2]       |
-    | 3   | 0.1          | NaN              | [0,3]         |
-    | 4   | 0.1          | 0.18             | [0,1,2,4]     |
-    | 5   | 0.05         | NaN              | [0,1,2,4,5]   |
-    | 6   | 0.01         | NaN              | [0,1,2,4,5,6] |
+    | UID | SupplyAmount | SupplyAmount_USER | Branch        |
+    |-----|--------------|-------------------|---------------|
+    | 0   | 1            | NaN               | NaN           |
+    | 1   | 0.5          | 0.25              | [0,1]         |
+    | 2   | 0.2          | NaN               | [0,1,2]       |
+    | 3   | 0.1          | NaN               | [0,3]         |
+    | 4   | 0.1          | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05         | NaN               | [0,1,2,4,5]   |
+    | 6   | 0.01         | NaN               | [0,1,2,4,5,6] |
 
     the function returns a DataFrame of the kind:
 
     | UID | SupplyAmount      | Branch        |
     |-----|-------------------|---------------|
-    | 0   | 1                 | []            |
+    | 0   | 1                 | NaN           |
     | 1   | 0.25              | [0,1]         |
     | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
     | 3   | 0.1               | [0,3]         |
@@ -321,35 +339,31 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         Output DataFrame.
     """
-    df = df.copy(deep=True)
-    df_user_input_only = df[df['USERSupplyAmount'].notna()]
-    dict_user_input = dict(
-        zip(
-            df_user_input_only['UID'],
-            df_user_input_only['USERSupplyAmount'] / df_user_input_only['SupplyAmount']
-        )
-    )
+
+    df_filtered = df[~df[f'{column_name}_USER'].isna()]
+    dict_user_input = df_filtered.set_index('UID').to_dict()[f'{column_name}_USER']
     
     """
     For the example DataFrame from the docstrings above,
     the dict_user_input would be:
 
-    dict_user_data = {
+    dict_user_input = {
         1: 0.25,
         4: 0.18
     }
     """
 
+    df = df.copy(deep=True)
     def multiplier(row):
         if not isinstance(row['Branch'], list):
-            return row['SupplyAmount']
-        for branch_uid in reversed(row['Branch']):
-            if branch_uid in dict_user_input:
-                return row['SupplyAmount'] * dict_user_input[branch_uid]
-        return row['SupplyAmount']
+            return row[column_name]
+        for branch_UID in reversed(row['Branch']):
+            if branch_UID in dict_user_input:
+                return row[column_name] * dict_user_input[branch_UID]
+        return row[column_name]
 
-    df['SupplyAmount'] = df.apply(multiplier, axis=1)
-    df.drop(columns=['USERSupplyAmount'], inplace=True)
+    df[column_name] = df.apply(multiplier, axis=1)
+    df.drop(columns=[f'{column_name}_USER'], inplace=True)
 
     return df
 
@@ -628,11 +642,7 @@ class panel_lca_class:
                 how='left')
 
 
-    def determine_scope_emissions(
-            self,
-            df: pd.DataFrame,
-            uid_electricity: int = 53
-        ):
+    def determine_scope_emissions(self, df: pd.DataFrame):
         """
         Determines the scope 1/2/3 emissions from the graph traversal nodes dataframe.
         """
@@ -645,16 +655,8 @@ class panel_lca_class:
 
         burden_total = df.loc[(df['UID'] == 0)]['Burden(Cumulative)'].values.sum()
         
-        dict_scope['Scope 1'] = df.loc[(df['Scope 1?'] == True)]['Burden(Direct)'].values.sum()
-        try:
-            dict_scope['Scope 2'] = df.loc[
-                (df['Depth'] == 2)
-                &
-                (df['activity_datapackage_id'] == uid_electricity)
-            ]['Burden(Direct)'].values[0]
-        except: # it is possible that no Scope 2 processes are in the DataFrame
-            pass
-
+        dict_scope['Scope 1'] = df.loc[(df['Scope'] == 1)]['Burden(Direct)'].values.sum()
+        dict_scope['Scope 2'] = df.loc[(df['Scope'] == 2)]['Burden(Direct)'].values.sum()
         dict_scope['Scope 3'] = burden_total - dict_scope['Scope 1'] - dict_scope['Scope 2']
 
         self.scope_dict = dict_scope
@@ -703,10 +705,11 @@ def perform_graph_traversal(event):
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_traversal.copy()
     widget_tabulator.value = panel_lca_class_instance.df_tabulator
     column_editors = {
-        colname : {'type': 'editable', 'value': True}
+        colname: None
         for colname in panel_lca_class_instance.df_tabulator.columns
-        if colname not in ['Scope 1?', 'SupplyAmount', 'BurdenIntensity'] # WHYYYY is this resulting in revered logic?
+        if colname not in ['Scope', 'SupplyAmount', 'BurdenIntensity']
     }
+    column_editors['Scope'] = {'type': 'list', 'values': [1, 2, 3]}
     widget_tabulator.editors = column_editors
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
@@ -725,7 +728,7 @@ def update_dataframe_based_on_user_input(event):
         df_user_input=panel_lca_class_instance.df_tabulator_from_user,
         column_name='SupplyAmount',
     )
-    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user, column_name='SupplyAmount')
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
     widget_tabulator.value = panel_lca_class_instance.df_tabulator
     pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
@@ -771,7 +774,7 @@ widget_button_load_db.on_click(button_action_load_database)
 
 # https://panel.holoviz.org/reference/widgets/AutocompleteInput.html
 widget_autocomplete_product = pn.widgets.AutocompleteInput( 
-    name='Reference Product',
+    name='Reference Product/Product/Service',
     options=[],
     case_sensitive=False,
     search_strategy='includes',
@@ -851,9 +854,9 @@ col1 = pn.Column(
     widget_autocomplete_product,
     widget_select_method,
     widget_float_input_amount,
-    widget_button_lca,
-    widget_float_slider_cutoff,
     markdown_cutoff_documentation,
+    widget_float_slider_cutoff,
+    widget_button_lca,
     widget_button_graph,
     pn.Spacer(height=10),
     widget_number_lca_score,
@@ -868,9 +871,6 @@ widget_tabulator = pn.widgets.Tabulator(
     None,
     theme='site',
     show_index=False,
-    selectable=False,
-    formatters={'Scope 1?': BooleanFormatter()}, # tick/cross for boolean values
-    editors={}, # is set later such that only a single column can be edited
     hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
     layout='fit_data_stretch',
     sizing_mode='stretch_width'
