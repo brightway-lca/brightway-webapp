@@ -26,6 +26,29 @@ from bw2data.backends.proxies import Activity
 from bw_graph_tools.graph_traversal import Node
 from bw_graph_tools.graph_traversal import Edge
 
+def highlight_cells(s):
+    """
+    See Also
+    --------
+    - https://stackoverflow.com/a/48306463
+    """
+    if s['Scope'] == 3:
+        return ['background-color: yellow'] * len(s)
+    else:
+        return [''] * len(s)
+    
+
+def highlight_test(s):
+    """
+    See Also
+    --------
+    - https://stackoverflow.com/a/48306463
+    """
+    if s['Scope'] == 3:
+        return ['background-color: yellow'] * len(s)
+    else:
+        return [''] * len(s)
+
 
 def brightway_wasm_database_storage_workaround() -> None:
     """
@@ -302,15 +325,15 @@ def update_production_based_on_user_data(
 
     the function returns a DataFrame of the kind:
 
-    | UID | SupplyAmount      | Branch        |
-    |-----|-------------------|---------------|
-    | 0   | 1                 | NaN           |
-    | 1   | 0.25              | [0,1]         |
-    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
-    | 3   | 0.1               | [0,3]         |
-    | 4   | 0.18              | [0,1,2,4]     |
-    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
-    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
+    | UID | SupplyAmount      | Branch        | Edited? |
+    |-----|-------------------|---------------|---------|
+    | 0   | 1                 | NaN           | False   |
+    | 1   | 0.25              | [0,1]         | True    |
+    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       | True    |
+    | 3   | 0.1               | [0,3]         | False   |
+    | 4   | 0.18              | [0,1,2,4]     | True    |
+    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   | True    |
+    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] | True    |
 
     Notes
     -----
@@ -362,8 +385,13 @@ def update_production_based_on_user_data(
                 return row[column_name] * dict_user_input[branch_UID]
         return row[column_name]
 
-    df[column_name] = df.apply(multiplier, axis=1)
+    df[f'{column_name}_EDITED'] = df.apply(multiplier, axis=1)
+
+    df['Edited?'] = df[f'{column_name}_EDITED'] != df[column_name]
+
     df.drop(columns=[f'{column_name}_USER'], inplace=True)
+    df[column_name] = df[f'{column_name}_EDITED']
+    df.drop(columns=[f'{column_name}_EDITED'], inplace=True)
 
     return df
 
@@ -711,6 +739,7 @@ def perform_graph_traversal(event):
     }
     column_editors['Scope'] = {'type': 'list', 'values': [1, 2, 3]}
     widget_tabulator.editors = column_editors
+    widget_tabulator.style.apply(highlight_test, axis=1)
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
 
@@ -719,6 +748,8 @@ def perform_scope_analysis(event):
     panel_lca_class_instance.determine_scope_emissions(df=panel_lca_class_instance.df_tabulator_from_traversal)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
+
+
 
 
 def update_dataframe_based_on_user_input(event):
@@ -731,6 +762,7 @@ def update_dataframe_based_on_user_input(event):
     panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user, column_name='SupplyAmount')
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
     widget_tabulator.value = panel_lca_class_instance.df_tabulator
+    widget_tabulator.style.apply(highlight_cells, axis=1)
     pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
 
 def button_action_scope_analysis(event):
@@ -763,7 +795,6 @@ def button_action_scope_analysis(event):
             perform_scope_analysis(event)
 
 
-# https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_load_db = pn.widgets.Button( 
     name='Load USEEIO Database',
     icon='database-plus',
@@ -772,7 +803,6 @@ widget_button_load_db = pn.widgets.Button(
 )
 widget_button_load_db.on_click(button_action_load_database)
 
-# https://panel.holoviz.org/reference/widgets/AutocompleteInput.html
 widget_autocomplete_product = pn.widgets.AutocompleteInput( 
     name='Reference Product/Product/Service',
     options=[],
@@ -782,12 +812,10 @@ widget_autocomplete_product = pn.widgets.AutocompleteInput(
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/panes/Markdown.html
 markdown_method_documentation = pn.pane.Markdown("""
 The impact assessment methods are documented [in Table 3](https://www.nature.com/articles/s41597-022-01293-7/tables/4) of the [USEEIO release article](https://doi.org/10.1038/s41597-022-01293-7).
 """)
 
-# https://panel.holoviz.org/reference/widgets/Select.html
 widget_select_method = pn.widgets.Select( 
     name='Impact Assessment Method',
     options=[],
@@ -795,16 +823,14 @@ widget_select_method = pn.widgets.Select(
 
 )
 
-# https://panel.holoviz.org/reference/widgets/FloatInput.html
 widget_float_input_amount = pn.widgets.FloatInput( 
     name='(Monetary) Amount of Reference Product [USD]',
-    value=1,
+    value=100,
     step=1,
     start=0,
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_lca = pn.widgets.Button( 
     name='Compute LCA Score',
     icon='calculator',
@@ -813,7 +839,6 @@ widget_button_lca = pn.widgets.Button(
 )
 widget_button_lca.on_click(button_action_perform_lca)
 
- # https://panel.holoviz.org/reference/widgets/EditableFloatSlider.html
 widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
     name='Graph Traversal Cut-Off [%]',
     start=1,
@@ -823,21 +848,18 @@ widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/panes/Markdown.html
 markdown_cutoff_documentation = pn.pane.Markdown("""
 [A cut-off of 10%](https://docs.brightway.dev/projects/graphtools/en/latest/content/api/bw_graph_tools/graph_traversal/new_node_each_visit/index.html) means that only those processes responsible or 90% of impact will be computed.
 """)
         
-# https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_graph = pn.widgets.Button(
-    name='Re-Perform Scope Analysis',
+    name='Update Data based on User Input',
     icon='chart-donut-3',
     button_type='primary',
     sizing_mode='stretch_width'
 )
 widget_button_graph.on_click(button_action_scope_analysis)
 
-# https://panel.holoviz.org/reference/indicators/Number.html
 widget_number_lca_score = pn.indicators.Number(
     name='LCA Impact Score',
     font_size='30pt',
@@ -854,7 +876,7 @@ widget_plotly_figure_piechart = pn.pane.Plotly(
 )
 
 col1 = pn.Column(
-    '## USEEIO Database Query',
+    '# LCA Settings',
     widget_button_load_db,
     widget_autocomplete_product,
     markdown_method_documentation,
@@ -871,7 +893,6 @@ col1 = pn.Column(
 
 # COLUMN 2 ####################################################################
 
-# https://panel.holoviz.org/reference/widgets/Tabulator.html#formatters
 from bokeh.models.widgets.tables import BooleanFormatter
 widget_tabulator = pn.widgets.Tabulator(
     None,
@@ -881,22 +902,25 @@ widget_tabulator = pn.widgets.Tabulator(
     layout='fit_data_stretch',
     sizing_mode='stretch_width'
 )
+filename_download, button_download = widget_tabulator.download_menu(
+    text_kwargs={'name': 'Filename', 'value': 'filename.csv'},
+    button_kwargs={'name': 'Download Table'}
+)
+button_download.align = 'center'
+button_download.icon = 'download'
 
-# https://panel.holoviz.org/reference/widgets/StaticText.html
 widget_cutoff_indicator_statictext = pn.widgets.StaticText(
     name='Includes processes responsible for amount of emissions [%]',
     value=None
 )
 
 col2 = pn.Column(
-    '## Table of Upstream Processes',
-    widget_cutoff_indicator_statictext,
+    pn.Row('# Table of Upstream Processes', pn.HSpacer(), filename_download, button_download),
     widget_tabulator
 )
 
 # SITE ######################################################################
 
-# https://discourse.holoviz.org/t/is-there-a-way-to-click-button-and-open-a-new-link-in-a-new-tab
 code_open_window = """
 window.open("https://github.com/brightway-lca/brightway-webapp/blob/main/README.md")
 """
@@ -915,7 +939,6 @@ header = pn.Row(
     sizing_mode="stretch_width",
 )
 
-# https://panel.holoviz.org/tutorials/basic/templates.html
 template = pn.template.MaterialTemplate(
     header=header,
     title='Brightway WebApp (Carbon Accounting)',
@@ -924,7 +947,6 @@ template = pn.template.MaterialTemplate(
     favicon='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/favicon.png',
 )
 
-# https://panel.holoviz.org/reference/layouts/GridSpec.html
 gspec = pn.GridSpec(ncols=3, sizing_mode='stretch_both')
 gspec[:,0:1] = col1 # 1/3rd of the width
 gspec[:,1:3] = col2 # 2/3rds of the width
