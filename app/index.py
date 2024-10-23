@@ -1,4 +1,3 @@
-# %%
 import panel as pn
 pn.extension(notifications=True)
 pn.extension(design='material')
@@ -297,15 +296,22 @@ def update_burden_intensity_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame
     | 0   | 0.1             |
     | 1   | 0.25            |
     | 2   | 0.3             |
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output dataframe.
     """
+
+
     df['BurdenIntensity'] = df['BurdenIntensity_USER'].combine_first(df['BurdenIntensity'])
     df = df.drop(columns=['BurdenIntensity_USER'])
 
-    return df
-
-
-def update_burden_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
-    df['Burden(Direct)'] = df['SupplyAmount'] * df['BurdenIntensity']
     return df
 
 
@@ -399,6 +405,26 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def update_burden_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the environmental burden of nodes
+    by multiplying the burden intensity and the supply amount.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output dataframe.
+    """
+
+    df['Burden(Direct)'] = df['SupplyAmount'] * df['BurdenIntensity']
+    return df
+
+
 def determine_edited_rows(df: pd.DataFrame) -> pd.DataFrame:
     """
     Determines which rows have been edited by the user.
@@ -472,10 +498,42 @@ def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figur
     return plotly_figure
 
 
-def determine_overall_score(df: pd.DataFrame):
-    return df['Burden(Direct)'].sum()
+def generate_table_filename() -> str:
+    """
+    Generates a string to be used a filename for downloading the tabulator.value DataFrame.
+
+    Returns
+    -------
+    str
+        Filename string.
+    """
+    str_filename: str = (
+        "activity='"
+        + panel_lca_class_instance.chosen_activity['name'].replace(' ', '_').replace(';', '') .replace(',', '')
+        + "'_method='"
+        + '-'.join(panel_lca_class_instance.chosen_method.name).replace(' ', '-')
+        + "'_cutoff=" 
+        + str(panel_lca_class_instance.graph_traversal_cutoff).replace('.', ',') 
+        + ".csv"
+    )
+    return str_filename
 
 
+def determine_scope_emissions(df: pd.DataFrame):
+        """
+        Determines the scope 1/2/3 emissions from the graph traversal nodes dataframe.
+        """
+        dict_scope = {
+            'Scope 1': 0,
+            'Scope 2': 0,
+            'Scope 3': 0
+        }
+        
+        dict_scope['Scope 1'] = df.loc[(df['Scope'] == 1)]['Burden(Direct)'].values.sum()
+        dict_scope['Scope 2'] = df.loc[(df['Scope'] == 2)]['Burden(Direct)'].values.sum()
+        dict_scope['Scope 3'] = df['Burden(Direct)'].sum() - dict_scope['Scope 1'] - dict_scope['Scope 2']
+
+        return dict_scope
 
 class panel_lca_class:
     """
@@ -704,24 +762,6 @@ class panel_lca_class:
                 how='left')
 
 
-    def determine_scope_emissions(self, df: pd.DataFrame):
-        """
-        Determines the scope 1/2/3 emissions from the graph traversal nodes dataframe.
-        """
-        dict_scope = {
-            'Scope 1': 0,
-            'Scope 2': 0,
-            'Scope 3': 0
-        }
-        
-        dict_scope['Scope 1'] = df.loc[(df['Scope'] == 1)]['Burden(Direct)'].values.sum()
-        dict_scope['Scope 2'] = df.loc[(df['Scope'] == 2)]['Burden(Direct)'].values.sum()
-        dict_scope['Scope 3'] = df['Burden(Direct)'].sum() - dict_scope['Scope 1'] - dict_scope['Scope 2']
-
-        self.scope_dict = dict_scope
-
-
-
 brightway_wasm_database_storage_workaround()
 panel_lca_class_instance = panel_lca_class()
 
@@ -772,23 +812,12 @@ def perform_graph_traversal(event):
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
 
-def generate_table_filename(event):
-    str_filename: str = (
-        "activity='"
-        + panel_lca_class_instance.chosen_activity['name'].replace(' ', '_').replace(';', '') .replace(',', '')
-        + "'_method='"
-        + '-'.join(panel_lca_class_instance.chosen_method.name).replace(' ', '-')
-        + "'_cutoff=" 
-        + str(panel_lca_class_instance.graph_traversal_cutoff).replace('.', ',') 
-        + ".csv"
-    )
-    return str_filename
 
 def perform_scope_analysis(event):
     pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
-    panel_lca_class_instance.determine_scope_emissions(df=widget_tabulator.value)
+    panel_lca_class_instance.scope_dict = determine_scope_emissions(df=widget_tabulator.value)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
-    filename_download.value = generate_table_filename(event)
+    filename_download.value = generate_table_filename()
     widget_number_lca_score.value = panel_lca_class_instance.df_tabulator['Burden(Direct)'].sum()
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
 
@@ -939,11 +968,11 @@ col1 = pn.Column(
 
 # COLUMN 2 ####################################################################
 
-from bokeh.models.widgets.tables import BooleanFormatter
-
 
 def highlight_tabulator_cells(tabulator_row):
     """
+    Applies a background color to all rows where the 'Edited?' column is True.
+
     See Also
     --------
     - https://stackoverflow.com/a/48306463
