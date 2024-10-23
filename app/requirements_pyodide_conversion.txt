@@ -1,6 +1,6 @@
-bw2data==4.0.dev52 # https://pypi.org/project/bw2data/#history
-bw2io==0.9.dev37 # https://pypi.org/project/bw2io/#history
-bw2calc==2.0.dev20 # https://pypi.org/project/bw2calc/#history
-bw-graph-tools==0.4.1 # https://pypi.org/project/bw-graph-tools/#history
-plotly==5.24.0 # https://pypi.org/project/plotly/#history
+bw2data==4.0.dev59 # https://pypi.org/project/bw2data/#history
+bw2io==0.9.dev41 # https://pypi.org/project/bw2io/#history
+bw2calc==2.0.dev23 # https://pypi.org/project/bw2calc/#history
+bw-graph-tools==0.5 # https://pypi.org/project/bw-graph-tools/#history
+plotly==5.24.1 # https://pypi.org/project/plotly/#history
 lzma # must be loaded explicitly because https://pyodide.org/en/stable/usage/wasm-constraints.html#optional-modules

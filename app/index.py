@@ -26,29 +26,6 @@ from bw2data.backends.proxies import Activity
 from bw_graph_tools.graph_traversal import Node
 from bw_graph_tools.graph_traversal import Edge
 
-def highlight_cells(s):
-    """
-    See Also
-    --------
-    - https://stackoverflow.com/a/48306463
-    """
-    if s['Scope'] == 3:
-        return ['background-color: yellow'] * len(s)
-    else:
-        return [''] * len(s)
-    
-
-def highlight_test(s):
-    """
-    See Also
-    --------
-    - https://stackoverflow.com/a/48306463
-    """
-    if s['Scope'] == 3:
-        return ['background-color: yellow'] * len(s)
-    else:
-        return [''] * len(s)
-
 
 def brightway_wasm_database_storage_workaround() -> None:
     """
@@ -242,10 +219,9 @@ def add_branch_information_to_edges_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(branches)
 
 
-def create_user_input_column(
+def create_user_input_columns(
         df_original: pd.DataFrame,
         df_user_input: pd.DataFrame,
-        column_name: str
     ) -> pd.DataFrame:
     """
     Creates a new column in the 'original' DataFrame where only the
@@ -253,27 +229,27 @@ def create_user_input_column(
 
     For instance, given an "original" DataFrame of the kind:
 
-    | UID | SupplyAmount |
-    |-----|--------------|
-    | 0   | 1            |
-    | 1   | 0.5          |
-    | 2   | 0.2          |
+    | UID | SupplyAmount | BurdenIntensity |
+    |-----|--------------|-----------------|
+    | 0   | 1            | 0.1             |
+    | 1   | 0.5          | 0.5             |
+    | 2   | 0.2          | 0.3             |
 
     and a "user input" DataFrame of the kind:
 
-    | UID | SupplyAmount |
-    |-----|--------------|
-    | 0   | 1            |
-    | 1   | 0            |
-    | 2   | 0.2          |
+    | UID | SupplyAmount | BurdenIntensity |
+    |-----|--------------|-----------------|
+    | 0   | 1            | 0.1             |
+    | 1   | 0            | 0.5             |
+    | 2   | 0.2          | 2.1             |
 
     the function returns a DataFrame of the kind:
 
-    | UID | SupplyAmount | SupplyAmount_USER |
-    |-----|--------------|-------------------|
-    | 0   | 1            | NaN               |
-    | 1   | 0.5          | 0                 |
-    | 2   | 0.2          | NaN               |
+    | UID | SupplyAmount | SupplyAmount_USER | BurdenIntensity | BurdenIntensity_USER |
+    |-----|--------------|-------------------|-----------------|----------------------|
+    | 0   | 1            | NaN               | 0.1             | NaN                  |
+    | 1   | 0.5          | 0                 | 0.5             | NaN                  |
+    | 2   | 0.2          | NaN               | 0.3             | 2.1                  |
 
     Parameters
     ----------
@@ -286,24 +262,49 @@ def create_user_input_column(
     
     df_merged = pd.merge(
         df_original,
-        df_user_input[['UID', column_name]],
+        df_user_input[['UID', 'SupplyAmount', 'BurdenIntensity']],
         on='UID',
         how='left',
         suffixes=('', '_USER')
     )
 
-    df_merged[f'{column_name}_USER'] = np.where(
-        df_merged['SupplyAmount_USER'] != df_merged['SupplyAmount'],
-        df_merged['SupplyAmount_USER'],
-        np.nan
-    )
+    for column_name in ['SupplyAmount', 'BurdenIntensity']:
+        df_merged[f'{column_name}_USER'] = np.where(
+            df_merged[f'{column_name}_USER'] != df_merged[f'{column_name}'],
+            df_merged[f'{column_name}_USER'],
+            np.nan
+        )
 
     return df_merged
 
 
+def update_burden_intensity_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the burden intensity when user data is provided.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | BurdenIntensity | BurdenIntensity_USER |
+    |-----|-----------------|----------------------|
+    | 0   | 0.1             | NaN                  |
+    | 1   | 0.5             | 0.25                 |
+    | 2   | 0.3             | NaN                  |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | BurdenIntensity |
+    |-----|-----------------|
+    | 0   | 0.1             |
+    | 1   | 0.25            |
+    | 2   | 0.3             |
+    """
+    df['BurdenIntensity'] = df['BurdenIntensity_USER'].combine_first(df['BurdenIntensity'])
+    df = df.drop(columns=['BurdenIntensity_USER'])
+
+    return df
+
 def update_production_based_on_user_data(
         df: pd.DataFrame,
-        column_name: str
     ) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
@@ -325,15 +326,15 @@ def update_production_based_on_user_data(
 
     the function returns a DataFrame of the kind:
 
-    | UID | SupplyAmount      | Branch        | Edited? |
-    |-----|-------------------|---------------|---------|
-    | 0   | 1                 | NaN           | False   |
-    | 1   | 0.25              | [0,1]         | True    |
-    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       | True    |
-    | 3   | 0.1               | [0,3]         | False   |
-    | 4   | 0.18              | [0,1,2,4]     | True    |
-    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   | True    |
-    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] | True    |
+    | UID | SupplyAmount      | Branch        |
+    |-----|-------------------|---------------|
+    | 0   | 1                 | NaN           |
+    | 1   | 0.25              | [0,1]         |
+    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
+    | 3   | 0.1               | [0,3]         |
+    | 4   | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
+    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
 
     Notes
     -----
@@ -363,8 +364,8 @@ def update_production_based_on_user_data(
         Output DataFrame.
     """
 
-    df_filtered = df[~df[f'{column_name}_USER'].isna()]
-    dict_user_input = df_filtered.set_index('UID').to_dict()[f'{column_name}_USER']
+    df_filtered = df[~df['SupplyAmount_USER'].isna()]
+    dict_user_input = df_filtered.set_index('UID').to_dict()['SupplyAmount_USER']
     
     """
     For the example DataFrame from the docstrings above,
@@ -379,22 +380,45 @@ def update_production_based_on_user_data(
     df = df.copy(deep=True)
     def multiplier(row):
         if not isinstance(row['Branch'], list):
-            return row[column_name]
+            return row['SupplyAmount']
         for branch_UID in reversed(row['Branch']):
             if branch_UID in dict_user_input:
-                return row[column_name] * dict_user_input[branch_UID]
-        return row[column_name]
+                return row['SupplyAmount'] * dict_user_input[branch_UID]
+        return row['SupplyAmount']
 
-    df[f'{column_name}_EDITED'] = df.apply(multiplier, axis=1)
+    df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
 
-    df['Edited?'] = df[f'{column_name}_EDITED'] != df[column_name]
-
-    df.drop(columns=[f'{column_name}_USER'], inplace=True)
-    df[column_name] = df[f'{column_name}_EDITED']
-    df.drop(columns=[f'{column_name}_EDITED'], inplace=True)
+    df.drop(columns=['SupplyAmount_USER'], inplace=True)
+    df['SupplyAmount'] = df['SupplyAmount_EDITED']
+    df.drop(columns=['SupplyAmount_EDITED'], inplace=True)
 
     return df
 
+
+def determine_edited_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Determines which rows have been edited by the user.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | SupplyAmount_USER | BurdenIntensity_USER |
+    |-----|-------------------|----------------------|
+    | 0   | NaN               | NaN                  |
+    | 1   | 0.25              | NaN                  |
+    | 2   | NaN               | 2.1                  |
+    | 3   | NaN               | NaN                  |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount_USER | BurdenIntensity_USER | Edited? |
+    |-----|-------------------|----------------------|---------|
+    | 0   | NaN               | NaN                  | False   |
+    | 1   | 0.25              | NaN                  | True    |
+    | 2   | NaN               | 2.1                  | True    |
+    | 3   | NaN               | NaN                  | False   |
+    """
+    df['Edited?'] = df[['SupplyAmount_USER', 'BurdenIntensity_USER']].notnull().any(axis=1)
+    return df
 
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
     marker_colors = []
@@ -710,7 +734,6 @@ def button_action_perform_lca(event):
         return
     else:
         panel_lca_class_instance.df_graph_traversal_nodes = pd.DataFrame()
-        #widget_tabulator.value = panel_lca_class_instance.df_tabulator_for_display # REMOVE LATER??? WHAT DID THIS EVEN DO?
         widget_plotly_figure_piechart.object = create_plotly_figure_piechart({'null':0})
         pn.state.notifications.info('Calculating LCA score...', duration=5000)
         pass
@@ -739,30 +762,40 @@ def perform_graph_traversal(event):
     }
     column_editors['Scope'] = {'type': 'list', 'values': [1, 2, 3]}
     widget_tabulator.editors = column_editors
-    widget_tabulator.style.apply(highlight_test, axis=1)
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
 
+def generate_table_filename(event):
+    str_filename: str = (
+        "activity='"
+        + panel_lca_class_instance.chosen_activity['name'].replace(' ', '_').replace(';', '') .replace(',', '')
+        + "'_method='"
+        + '-'.join(panel_lca_class_instance.chosen_method.name).replace(' ', '-')
+        + "'_cutoff=" 
+        + str(panel_lca_class_instance.graph_traversal_cutoff).replace('.', ',') 
+        + ".csv"
+    )
+    return str_filename
+
 def perform_scope_analysis(event):
     pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
-    panel_lca_class_instance.determine_scope_emissions(df=panel_lca_class_instance.df_tabulator_from_traversal)
+    panel_lca_class_instance.determine_scope_emissions(df=widget_tabulator.value)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
+    filename_download.value = generate_table_filename(event)
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
 
 
-
-
-def update_dataframe_based_on_user_input(event):
+def update_data_based_on_user_input(event):
     pn.state.notifications.info('Updating Supply Chain based on User Input...', duration=5000)
-    panel_lca_class_instance.df_tabulator_from_user = create_user_input_column(
+    panel_lca_class_instance.df_tabulator_from_user = create_user_input_columns(
         df_original=panel_lca_class_instance.df_tabulator_from_traversal,
         df_user_input=panel_lca_class_instance.df_tabulator_from_user,
-        column_name='SupplyAmount',
     )
-    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user, column_name='SupplyAmount')
+    panel_lca_class_instance.df_tabulator_from_user = determine_edited_rows(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_burden_intensity_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
     widget_tabulator.value = panel_lca_class_instance.df_tabulator
-    widget_tabulator.style.apply(highlight_cells, axis=1)
     pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
 
 def button_action_scope_analysis(event):
@@ -791,7 +824,11 @@ def button_action_scope_analysis(event):
         ):
             panel_lca_class_instance.bool_user_provided_data = True
             panel_lca_class_instance.df_tabulator_from_user = panel_lca_class_instance.df_tabulator.copy()
-            update_dataframe_based_on_user_input(event)
+            update_data_based_on_user_input(event)
+            perform_scope_analysis(event)
+        elif (
+            (panel_lca_class_instance.df_tabulator['Scope'] != panel_lca_class_instance.df_tabulator_from_traversal['Scope']).any()
+        ):
             perform_scope_analysis(event)
 
 
@@ -894,18 +931,36 @@ col1 = pn.Column(
 # COLUMN 2 ####################################################################
 
 from bokeh.models.widgets.tables import BooleanFormatter
+
+
+def highlight_tabulator_cells(tabulator_row):
+    """
+    See Also
+    --------
+    - https://stackoverflow.com/a/48306463
+    - https://discourse.holoviz.org/t/dynamic-update-of-tabulator-style
+    """
+    if tabulator_row['Edited?'] == True:
+        return ['background-color: orange'] * len(tabulator_row)
+    else:
+        return [''] * len(tabulator_row)
+    
+
 widget_tabulator = pn.widgets.Tabulator(
-    None,
+    pd.DataFrame([['']], columns=['Data will appear here after calculations...']),
     theme='site',
     show_index=False,
     hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
     layout='fit_data_stretch',
     sizing_mode='stretch_width'
 )
+widget_tabulator.style.apply(highlight_tabulator_cells, axis=1)
+
 filename_download, button_download = widget_tabulator.download_menu(
     text_kwargs={'name': 'Filename', 'value': 'filename.csv'},
     button_kwargs={'name': 'Download Table'}
 )
+filename_download.sizing_mode = 'stretch_width'
 button_download.align = 'center'
 button_download.icon = 'download'
 
@@ -915,7 +970,7 @@ widget_cutoff_indicator_statictext = pn.widgets.StaticText(
 )
 
 col2 = pn.Column(
-    pn.Row('# Table of Upstream Processes', pn.HSpacer(), filename_download, button_download),
+    pn.Row('# Table of Upstream Processes', filename_download, button_download),
     widget_tabulator
 )
 
