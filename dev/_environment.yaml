@@ -1,0 +1,18 @@
+# https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
+name: panel
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  # core funcitonality
+  - python=3.12
+  # panel
+  - panel=1.5.2 # https://anaconda.org/conda-forge/panel/files
+  # data science
+  - jupyterlab
+  - scipy  
+  - pandas
+  - numpy
+  # plotting
+  - matplotlib
+  - plotly

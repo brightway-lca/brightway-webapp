@@ -132,12 +132,3 @@ def determine_scope_1_and_2_emissions(df: pd.DataFrame, uid_scope_2: int = 53) -
         pass
 
     return dict_scope
-
-#scope_1: float = df_nodes[df_nodes['unique_id'] == 0]['direct_emissions_score'][0]
-#scope_2: float = determine_scope_2_emissions(df_nodes, uid_electricity_process)
-#scope_3: float = lca.score - scope_1 - scope_2
-#remainder: float = lca.score - df_nodes[df_nodes['unique_id'] == 0]['cumulative_score'][0]
-
-
-
-# %%

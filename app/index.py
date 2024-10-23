@@ -1,4 +1,3 @@
-# %%
 import panel as pn
 pn.extension(notifications=True)
 pn.extension(design='material')
@@ -10,6 +9,7 @@ import plotly
 
 # data science
 import pandas as pd
+import numpy as np
 
 # system
 import os
@@ -63,7 +63,10 @@ def check_for_useeio_brightway_project(event):
     bd.projects.set_current(name='USEEIO-1.1')
 
 
-def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
+def nodes_dict_to_dataframe(
+        nodes: dict,
+        uid_electricity: int = 53 # hardcoded for USEEIO
+    ) -> pd.DataFrame:
     """
     Returns a dataframe with human-readable descriptions and emissions values of the nodes in the graph traversal.
 
@@ -82,21 +85,24 @@ def nodes_dict_to_dataframe(nodes: dict) -> pd.DataFrame:
     list_of_row_dicts = []
     for current_node in nodes.values():
 
-        scope_1: bool = False
-
+        scope: int = 3
         if current_node.unique_id == -1:
             continue
         elif current_node.unique_id == 0:
-            scope_1 = True
+            scope = 1
+        elif current_node.activity_datapackage_id == uid_electricity:
+            scope = 2
         else:
             pass
         list_of_row_dicts.append(
             {
                 'UID': current_node.unique_id,
-                'Scope 1?': scope_1,
+                'Scope': scope,
                 'Name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
-                'Cumulative': current_node.cumulative_score,
-                'Direct': current_node.direct_emissions_score,
+                'SupplyAmount': current_node.supply_amount,
+                'BurdenIntensity': current_node.direct_emissions_score/current_node.supply_amount,
+                # 'Burden(Cumulative)': current_node.cumulative_score,
+                'Burden(Direct)': current_node.direct_emissions_score + current_node.direct_emissions_score_outside_specific_flows,
                 'Depth': current_node.depth,
                 'activity_datapackage_id': current_node.activity_datapackage_id,
             }
@@ -212,6 +218,239 @@ def add_branch_information_to_edges_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(branches)
 
 
+def create_user_input_columns(
+        df_original: pd.DataFrame,
+        df_user_input: pd.DataFrame,
+    ) -> pd.DataFrame:
+    """
+    Creates a new column in the 'original' DataFrame where only the
+    user-supplied values are kept. The other values are replaced by NaN.
+
+    For instance, given an "original" DataFrame of the kind:
+
+    | UID | SupplyAmount | BurdenIntensity |
+    |-----|--------------|-----------------|
+    | 0   | 1            | 0.1             |
+    | 1   | 0.5          | 0.5             |
+    | 2   | 0.2          | 0.3             |
+
+    and a "user input" DataFrame of the kind:
+
+    | UID | SupplyAmount | BurdenIntensity |
+    |-----|--------------|-----------------|
+    | 0   | 1            | 0.1             |
+    | 1   | 0            | 0.5             |
+    | 2   | 0.2          | 2.1             |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount | SupplyAmount_USER | BurdenIntensity | BurdenIntensity_USER |
+    |-----|--------------|-------------------|-----------------|----------------------|
+    | 0   | 1            | NaN               | 0.1             | NaN                  |
+    | 1   | 0.5          | 0                 | 0.5             | NaN                  |
+    | 2   | 0.2          | NaN               | 0.3             | 2.1                  |
+
+    Parameters
+    ----------
+    df_original : pd.DataFrame
+        Original DataFrame.
+
+    df_user_input : pd.DataFrame
+        User input DataFrame.
+    """
+    
+    df_merged = pd.merge(
+        df_original,
+        df_user_input[['UID', 'SupplyAmount', 'BurdenIntensity']],
+        on='UID',
+        how='left',
+        suffixes=('', '_USER')
+    )
+
+    for column_name in ['SupplyAmount', 'BurdenIntensity']:
+        df_merged[f'{column_name}_USER'] = np.where(
+            df_merged[f'{column_name}_USER'] != df_merged[f'{column_name}'],
+            df_merged[f'{column_name}_USER'],
+            np.nan
+        )
+
+    return df_merged
+
+
+def update_burden_intensity_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the burden intensity when user data is provided.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | BurdenIntensity | BurdenIntensity_USER |
+    |-----|-----------------|----------------------|
+    | 0   | 0.1             | NaN                  |
+    | 1   | 0.5             | 0.25                 |
+    | 2   | 0.3             | NaN                  |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | BurdenIntensity |
+    |-----|-----------------|
+    | 0   | 0.1             |
+    | 1   | 0.25            |
+    | 2   | 0.3             |
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output dataframe.
+    """
+
+
+    df['BurdenIntensity'] = df['BurdenIntensity_USER'].combine_first(df['BurdenIntensity'])
+    df = df.drop(columns=['BurdenIntensity_USER'])
+
+    return df
+
+
+def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the production amount of all nodes which are upstream
+    of a node with user-supplied production amount.
+    If an upstream node has half the use-supplied production amount,
+    then the production amount of all downstream node is also halved.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | SupplyAmount | SupplyAmount_USER | Branch        |
+    |-----|--------------|-------------------|---------------|
+    | 0   | 1            | NaN               | NaN           |
+    | 1   | 0.5          | 0.25              | [0,1]         |
+    | 2   | 0.2          | NaN               | [0,1,2]       |
+    | 3   | 0.1          | NaN               | [0,3]         |
+    | 4   | 0.1          | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05         | NaN               | [0,1,2,4,5]   |
+    | 6   | 0.01         | NaN               | [0,1,2,4,5,6] |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount      | Branch        |
+    |-----|-------------------|---------------|
+    | 0   | 1                 | NaN           |
+    | 1   | 0.25              | [0,1]         |
+    | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
+    | 3   | 0.1               | [0,3]         |
+    | 4   | 0.18              | [0,1,2,4]     |
+    | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
+    | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
+
+    Notes
+    -----
+
+    As we can see, the function updates production only
+    for those nodes upstream of a node with 'production_user':
+
+    - Node 2 is upstream of node 1, which has a 'production_user' value.
+    - Node 3 is NOT upstream of node 1. It is upstream of node 0, but node 0 does not have a 'production_user' value.
+
+    As we can see, the function always takes the "most recent"
+    'production_user' value upstream of a node:
+
+    - Node 5 is upstream of node 4, which has a 'production_user' value.
+    - Node 4 is upstream of node 1, which also has a 'production_user' value.
+
+    In this case, the function takes the 'production_user' value of node 4, not of node 1.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input DataFrame. Must have the columns 'production', 'production_user' and 'branch'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output DataFrame.
+    """
+
+    df_filtered = df[~df['SupplyAmount_USER'].isna()]
+    dict_user_input = df_filtered.set_index('UID').to_dict()['SupplyAmount_USER']
+    
+    """
+    For the example DataFrame from the docstrings above,
+    the dict_user_input would be:
+
+    dict_user_input = {
+        1: 0.25,
+        4: 0.18
+    }
+    """
+
+    df = df.copy(deep=True)
+    def multiplier(row):
+        if not isinstance(row['Branch'], list):
+            return row['SupplyAmount']
+        for branch_UID in reversed(row['Branch']):
+            if branch_UID in dict_user_input:
+                return row['SupplyAmount'] * dict_user_input[branch_UID]
+        return row['SupplyAmount']
+
+    df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
+
+    df.drop(columns=['SupplyAmount_USER'], inplace=True)
+    df['SupplyAmount'] = df['SupplyAmount_EDITED']
+    df.drop(columns=['SupplyAmount_EDITED'], inplace=True)
+
+    return df
+
+
+def update_burden_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Updates the environmental burden of nodes
+    by multiplying the burden intensity and the supply amount.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    Returns
+    -------
+    pd.DataFrame
+        Output dataframe.
+    """
+
+    df['Burden(Direct)'] = df['SupplyAmount'] * df['BurdenIntensity']
+    return df
+
+
+def determine_edited_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Determines which rows have been edited by the user.
+
+    For instance, given a DataFrame of the kind:
+
+    | UID | SupplyAmount_USER | BurdenIntensity_USER |
+    |-----|-------------------|----------------------|
+    | 0   | NaN               | NaN                  |
+    | 1   | 0.25              | NaN                  |
+    | 2   | NaN               | 2.1                  |
+    | 3   | NaN               | NaN                  |
+
+    the function returns a DataFrame of the kind:
+
+    | UID | SupplyAmount_USER | BurdenIntensity_USER | Edited? |
+    |-----|-------------------|----------------------|---------|
+    | 0   | NaN               | NaN                  | False   |
+    | 1   | 0.25              | NaN                  | True    |
+    | 2   | NaN               | 2.1                  | True    |
+    | 3   | NaN               | NaN                  | False   |
+    """
+    df['Edited?'] = df[['SupplyAmount_USER', 'BurdenIntensity_USER']].notnull().any(axis=1)
+    return df
+
+
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
     marker_colors = []
     for label in data_dict.keys():
@@ -259,6 +498,43 @@ def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figur
     return plotly_figure
 
 
+def generate_table_filename() -> str:
+    """
+    Generates a string to be used a filename for downloading the tabulator.value DataFrame.
+
+    Returns
+    -------
+    str
+        Filename string.
+    """
+    str_filename: str = (
+        "activity='"
+        + panel_lca_class_instance.chosen_activity['name'].replace(' ', '_').replace(';', '') .replace(',', '')
+        + "'_method='"
+        + '-'.join(panel_lca_class_instance.chosen_method.name).replace(' ', '-')
+        + "'_cutoff=" 
+        + str(panel_lca_class_instance.graph_traversal_cutoff).replace('.', ',') 
+        + ".csv"
+    )
+    return str_filename
+
+
+def determine_scope_emissions(df: pd.DataFrame):
+        """
+        Determines the scope 1/2/3 emissions from the graph traversal nodes dataframe.
+        """
+        dict_scope = {
+            'Scope 1': 0,
+            'Scope 2': 0,
+            'Scope 3': 0
+        }
+        
+        dict_scope['Scope 1'] = df.loc[(df['Scope'] == 1)]['Burden(Direct)'].values.sum()
+        dict_scope['Scope 2'] = df.loc[(df['Scope'] == 2)]['Burden(Direct)'].values.sum()
+        dict_scope['Scope 3'] = df['Burden(Direct)'].sum() - dict_scope['Scope 1'] - dict_scope['Scope 2']
+
+        return dict_scope
+
 class panel_lca_class:
     """
     This class is used to store all the necessary information for the LCA calculation.
@@ -286,6 +562,10 @@ class panel_lca_class:
         self.graph_traversal = {}
         self.df_graph_traversal_nodes = None
         self.df_graph_traversal_edges = None
+        self.df_tabulator_from_traversal = None
+        self.df_tabulator_from_user = None
+        self.df_tabulator = None # nota bene: gets updated automatically when cells in the tabulator are edited # https://panel.holoviz.org/reference/widgets/Tabulator.html#editors-editing
+        self.bool_user_provided_data = False
 
 
     def set_db(self, event):
@@ -474,40 +754,12 @@ class panel_lca_class:
             return
         else:
             self.df_graph_traversal_edges = add_branch_information_to_edges_dataframe(self.df_graph_traversal_edges)
-            self.df_graph_traversal_nodes = pd.merge(
+            self.df_tabulator_from_traversal = pd.merge(
                 self.df_graph_traversal_nodes,
                 self.df_graph_traversal_edges,
                 left_on='UID',
                 right_on='producer_unique_id',
                 how='left')
-
-
-    def determine_scope_1_and_2_emissions(self, event,  uid_electricity: int = 53,):
-        """
-        Determines the scope 1 and 2 emissions from the graph traversal nodes dataframe.
-        """
-        dict_scope = {
-            'Scope 1': 0,
-            'Scope 2': 0,
-            'Scope 3': 0
-        }
-        df = self.df_graph_traversal_nodes
-        dict_scope['Scope 1'] = df.loc[(df['Scope 1?'] == True)]['Direct'].values.sum()
-
-        try:
-            dict_scope['Scope 2'] = df.loc[
-                (df['Depth'] == 2)
-                &
-                (df['activity_datapackage_id'] == uid_electricity)
-            ]['Direct'].values[0]
-        except:
-            pass
-
-        self.scope_dict = dict_scope
-
-
-    def determine_scope_3_emissions(self, event):
-        self.scope_dict['Scope 3'] = self.lca.score - self.scope_dict['Scope 1'] - self.scope_dict['Scope 2']
 
 
 brightway_wasm_database_storage_workaround()
@@ -530,7 +782,6 @@ def button_action_perform_lca(event):
         return
     else:
         panel_lca_class_instance.df_graph_traversal_nodes = pd.DataFrame()
-        widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
         widget_plotly_figure_piechart.object = create_plotly_figure_piechart({'null':0})
         pn.state.notifications.info('Calculating LCA score...', duration=5000)
         pass
@@ -539,7 +790,6 @@ def button_action_perform_lca(event):
     panel_lca_class_instance.set_chosen_amount(event)
     panel_lca_class_instance.perform_lca(event)
     pn.state.notifications.success('Completed LCA score calculation!', duration=5000)
-    widget_number_lca_score.value = panel_lca_class_instance.lca.score
     widget_number_lca_score.format = f'{{value:,.3f}} {panel_lca_class_instance.chosen_method_unit}'
     perform_graph_traversal(event)
     perform_scope_analysis(event)
@@ -547,44 +797,79 @@ def button_action_perform_lca(event):
 
 def perform_graph_traversal(event):
     pn.state.notifications.info('Performing Graph Traversal...', duration=5000)
+    panel_lca_class_instance.bool_user_provided_data = False
     panel_lca_class_instance.set_graph_traversal_cutoff(event)
     panel_lca_class_instance.perform_graph_traversal(event)
-    widget_tabulator.value = panel_lca_class_instance.df_graph_traversal_nodes
+    panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_traversal.copy()
+    widget_tabulator.value = panel_lca_class_instance.df_tabulator
     column_editors = {
-        colname : {'type': 'editable', 'value': True}
-        for colname in panel_lca_class_instance.df_graph_traversal_nodes.columns
-        if colname != 'Scope 1?'
+        colname: None
+        for colname in panel_lca_class_instance.df_tabulator.columns
+        if colname not in ['Scope', 'SupplyAmount', 'BurdenIntensity']
     }
+    column_editors['Scope'] = {'type': 'list', 'values': [1, 2, 3]}
     widget_tabulator.editors = column_editors
     pn.state.notifications.success('Graph Traversal Complete!', duration=5000)
 
 
+
 def perform_scope_analysis(event):
     pn.state.notifications.info('Performing Scope Analysis...', duration=5000)
-    panel_lca_class_instance.determine_scope_1_and_2_emissions(event)
-    panel_lca_class_instance.determine_scope_3_emissions(event)
+    panel_lca_class_instance.scope_dict = determine_scope_emissions(df=widget_tabulator.value)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
+    filename_download.value = generate_table_filename()
+    widget_number_lca_score.value = panel_lca_class_instance.df_tabulator['Burden(Direct)'].sum()
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
 
+
+def update_data_based_on_user_input(event):
+    pn.state.notifications.info('Updating Supply Chain based on User Input...', duration=5000)
+    panel_lca_class_instance.df_tabulator_from_user = create_user_input_columns(
+        df_original=panel_lca_class_instance.df_tabulator_from_traversal,
+        df_user_input=panel_lca_class_instance.df_tabulator_from_user,
+    )
+    panel_lca_class_instance.df_tabulator_from_user = determine_edited_rows(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_burden_intensity_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_burden_based_on_user_data(panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
+    widget_tabulator.value = panel_lca_class_instance.df_tabulator
+    pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
 
 def button_action_scope_analysis(event):
     if panel_lca_class_instance.lca is None:
         pn.state.notifications.error('Please perform an LCA Calculation first!', duration=5000)
         return
     else:
-        if panel_lca_class_instance.df_graph_traversal_nodes.empty:
+        # if the user has not yet performed graph traversal, or changed the cutoff value,
+        # then perform graph traversal and scope analysis
+        if (
+            panel_lca_class_instance.df_graph_traversal_nodes.empty or
+            widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff
+        ):
             perform_graph_traversal(event)
             perform_scope_analysis(event)
-        else:
-            if widget_float_slider_cutoff.value / 100 != panel_lca_class_instance.graph_traversal_cutoff:
-                perform_graph_traversal(event)
-                perform_scope_analysis(event)
-            else:
-                panel_lca_class_instance.df_graph_traversal_nodes = widget_tabulator.value
-                perform_scope_analysis(event)
-                
+        # if the user has already provided input data, we reset the dataframe
+        elif panel_lca_class_instance.bool_user_provided_data == True:
+            pn.state.notifications.error('You are not allowed to edit a table which has already been re-computed on your input! Resetting the table...', duration=5000)
+            perform_graph_traversal(event)
+            perform_scope_analysis(event)
+        # if the user has overriden either supply or burden intensity values in the table,
+        # then update upstream values based on user input
+        elif (
+            (panel_lca_class_instance.df_tabulator['SupplyAmount'] != panel_lca_class_instance.df_tabulator_from_traversal['SupplyAmount']).any() or 
+            (panel_lca_class_instance.df_tabulator['BurdenIntensity'] != panel_lca_class_instance.df_tabulator_from_traversal['BurdenIntensity']).any()
+        ):
+            panel_lca_class_instance.bool_user_provided_data = True
+            panel_lca_class_instance.df_tabulator_from_user = panel_lca_class_instance.df_tabulator.copy()
+            update_data_based_on_user_input(event)
+            perform_scope_analysis(event)
+        elif (
+            (panel_lca_class_instance.df_tabulator['Scope'] != panel_lca_class_instance.df_tabulator_from_traversal['Scope']).any()
+        ):
+            perform_scope_analysis(event)
 
-# https://panel.holoviz.org/reference/widgets/Button.html
+
 widget_button_load_db = pn.widgets.Button( 
     name='Load USEEIO Database',
     icon='database-plus',
@@ -593,9 +878,8 @@ widget_button_load_db = pn.widgets.Button(
 )
 widget_button_load_db.on_click(button_action_load_database)
 
-# https://panel.holoviz.org/reference/widgets/AutocompleteInput.html
 widget_autocomplete_product = pn.widgets.AutocompleteInput( 
-    name='Reference Product',
+    name='Reference Product/Product/Service',
     options=[],
     case_sensitive=False,
     search_strategy='includes',
@@ -603,7 +887,10 @@ widget_autocomplete_product = pn.widgets.AutocompleteInput(
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/widgets/Select.html
+markdown_method_documentation = pn.pane.Markdown("""
+The impact assessment methods are documented [in Table 3](https://www.nature.com/articles/s41597-022-01293-7/tables/4) of the [USEEIO release article](https://doi.org/10.1038/s41597-022-01293-7).
+""")
+
 widget_select_method = pn.widgets.Select( 
     name='Impact Assessment Method',
     options=[],
@@ -611,16 +898,14 @@ widget_select_method = pn.widgets.Select(
 
 )
 
-# https://panel.holoviz.org/reference/widgets/FloatInput.html
 widget_float_input_amount = pn.widgets.FloatInput( 
     name='(Monetary) Amount of Reference Product [USD]',
-    value=1,
+    value=100,
     step=1,
     start=0,
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_lca = pn.widgets.Button( 
     name='Compute LCA Score',
     icon='calculator',
@@ -629,7 +914,6 @@ widget_button_lca = pn.widgets.Button(
 )
 widget_button_lca.on_click(button_action_perform_lca)
 
- # https://panel.holoviz.org/reference/widgets/EditableFloatSlider.html
 widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
     name='Graph Traversal Cut-Off [%]',
     start=1,
@@ -639,21 +923,18 @@ widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
     sizing_mode='stretch_width'
 )
 
-# https://panel.holoviz.org/reference/panes/Markdown.html
 markdown_cutoff_documentation = pn.pane.Markdown("""
-A cut-off of 10% means that only those processes responsible or 90% of impact will be computed. A lower cut-off therefore results in a longer calculation, which yields a larger amount of processes.
+[A cut-off of 10%](https://docs.brightway.dev/projects/graphtools/en/latest/content/api/bw_graph_tools/graph_traversal/new_node_each_visit/index.html) means that only those processes responsible or 90% of impact will be computed.
 """)
         
-# https://panel.holoviz.org/reference/widgets/Button.html
 widget_button_graph = pn.widgets.Button(
-    name='Re-Perform Scope Analysis',
+    name='Update Data based on User Input',
     icon='chart-donut-3',
     button_type='primary',
     sizing_mode='stretch_width'
 )
 widget_button_graph.on_click(button_action_scope_analysis)
 
-# https://panel.holoviz.org/reference/indicators/Number.html
 widget_number_lca_score = pn.indicators.Number(
     name='LCA Impact Score',
     font_size='30pt',
@@ -670,14 +951,15 @@ widget_plotly_figure_piechart = pn.pane.Plotly(
 )
 
 col1 = pn.Column(
-    '## USEEIO Database Query',
+    '# LCA Settings',
     widget_button_load_db,
     widget_autocomplete_product,
+    markdown_method_documentation,
     widget_select_method,
     widget_float_input_amount,
-    widget_button_lca,
-    widget_float_slider_cutoff,
     markdown_cutoff_documentation,
+    widget_float_slider_cutoff,
+    widget_button_lca,
     widget_button_graph,
     pn.Spacer(height=10),
     widget_number_lca_score,
@@ -686,35 +968,52 @@ col1 = pn.Column(
 
 # COLUMN 2 ####################################################################
 
-# https://panel.holoviz.org/reference/widgets/Tabulator.html#formatters
-from bokeh.models.widgets.tables import BooleanFormatter
+
+def highlight_tabulator_cells(tabulator_row):
+    """
+    Applies a background color to all rows where the 'Edited?' column is True.
+
+    See Also
+    --------
+    - https://stackoverflow.com/a/48306463
+    - https://discourse.holoviz.org/t/dynamic-update-of-tabulator-style
+    """
+    if tabulator_row['Edited?'] == True:
+        return ['background-color: orange'] * len(tabulator_row)
+    else:
+        return [''] * len(tabulator_row)
+    
+
 widget_tabulator = pn.widgets.Tabulator(
-    None,
+    pd.DataFrame([['']], columns=['Data will appear here after calculations...']),
     theme='site',
     show_index=False,
-    selectable=False,
-    formatters={'Scope 1?': BooleanFormatter()}, # tick/cross for boolean values
-    editors={}, # is set later such that only a single column can be edited
     hidden_columns=['activity_datapackage_id', 'producer_unique_id'],
     layout='fit_data_stretch',
     sizing_mode='stretch_width'
 )
+widget_tabulator.style.apply(highlight_tabulator_cells, axis=1)
 
-# https://panel.holoviz.org/reference/widgets/StaticText.html
+filename_download, button_download = widget_tabulator.download_menu(
+    text_kwargs={'name': 'Filename', 'value': 'filename.csv'},
+    button_kwargs={'name': 'Download Table'}
+)
+filename_download.sizing_mode = 'stretch_width'
+button_download.align = 'center'
+button_download.icon = 'download'
+
 widget_cutoff_indicator_statictext = pn.widgets.StaticText(
     name='Includes processes responsible for amount of emissions [%]',
     value=None
 )
 
 col2 = pn.Column(
-    '## Table of Upstream Processes',
-    widget_cutoff_indicator_statictext,
+    pn.Row('# Table of Upstream Processes', filename_download, button_download),
     widget_tabulator
 )
 
 # SITE ######################################################################
 
-# https://discourse.holoviz.org/t/is-there-a-way-to-click-button-and-open-a-new-link-in-a-new-tab
 code_open_window = """
 window.open("https://github.com/brightway-lca/brightway-webapp/blob/main/README.md")
 """
@@ -733,7 +1032,6 @@ header = pn.Row(
     sizing_mode="stretch_width",
 )
 
-# https://panel.holoviz.org/tutorials/basic/templates.html
 template = pn.template.MaterialTemplate(
     header=header,
     title='Brightway WebApp (Carbon Accounting)',
@@ -742,7 +1040,6 @@ template = pn.template.MaterialTemplate(
     favicon='https://raw.githubusercontent.com/brightway-lca/brightway-webapp/main/app/_media/favicon.png',
 )
 
-# https://panel.holoviz.org/reference/layouts/GridSpec.html
 gspec = pn.GridSpec(ncols=3, sizing_mode='stretch_both')
 gspec[:,0:1] = col1 # 1/3rd of the width
 gspec[:,1:3] = col2 # 2/3rds of the width
