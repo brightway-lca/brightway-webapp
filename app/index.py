@@ -101,9 +101,9 @@ def nodes_dict_to_dataframe(
                 'Scope': scope,
                 'Name': bd.get_node(id=current_node.activity_datapackage_id)['name'],
                 'SupplyAmount': current_node.supply_amount,
-                'BurdenIntensity': current_node.supply_amount / current_node.direct_emissions_score,
-                'Burden(Cumulative)': current_node.cumulative_score,
-                'Burden(Direct)': current_node.direct_emissions_score,
+                'BurdenIntensity': current_node.direct_emissions_score/current_node.supply_amount,
+                # 'Burden(Cumulative)': current_node.cumulative_score,
+                'Burden(Direct)': current_node.direct_emissions_score + current_node.direct_emissions_score_outside_specific_flows,
                 'Depth': current_node.depth,
                 'activity_datapackage_id': current_node.activity_datapackage_id,
             }
@@ -303,9 +303,13 @@ def update_burden_intensity_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame
 
     return df
 
-def update_production_based_on_user_data(
-        df: pd.DataFrame,
-    ) -> pd.DataFrame:
+
+def update_burden_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
+    df['Burden(Direct)'] = df['SupplyAmount'] * df['BurdenIntensity']
+    return df
+
+
+def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
     of a node with user-supplied production amount.
@@ -420,6 +424,7 @@ def determine_edited_rows(df: pd.DataFrame) -> pd.DataFrame:
     df['Edited?'] = df[['SupplyAmount_USER', 'BurdenIntensity_USER']].notnull().any(axis=1)
     return df
 
+
 def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figure:
     marker_colors = []
     for label in data_dict.keys():
@@ -465,6 +470,11 @@ def create_plotly_figure_piechart(data_dict: dict) -> plotly.graph_objects.Figur
         ),
     )
     return plotly_figure
+
+
+def determine_overall_score(df: pd.DataFrame):
+    return df['Burden(Direct)'].sum()
+
 
 
 class panel_lca_class:
@@ -703,15 +713,13 @@ class panel_lca_class:
             'Scope 2': 0,
             'Scope 3': 0
         }
-        burden_total: float = 0
-
-        burden_total = df.loc[(df['UID'] == 0)]['Burden(Cumulative)'].values.sum()
         
         dict_scope['Scope 1'] = df.loc[(df['Scope'] == 1)]['Burden(Direct)'].values.sum()
         dict_scope['Scope 2'] = df.loc[(df['Scope'] == 2)]['Burden(Direct)'].values.sum()
-        dict_scope['Scope 3'] = burden_total - dict_scope['Scope 1'] - dict_scope['Scope 2']
+        dict_scope['Scope 3'] = df['Burden(Direct)'].sum() - dict_scope['Scope 1'] - dict_scope['Scope 2']
 
         self.scope_dict = dict_scope
+
 
 
 brightway_wasm_database_storage_workaround()
@@ -742,7 +750,6 @@ def button_action_perform_lca(event):
     panel_lca_class_instance.set_chosen_amount(event)
     panel_lca_class_instance.perform_lca(event)
     pn.state.notifications.success('Completed LCA score calculation!', duration=5000)
-    widget_number_lca_score.value = panel_lca_class_instance.lca.score
     widget_number_lca_score.format = f'{{value:,.3f}} {panel_lca_class_instance.chosen_method_unit}'
     perform_graph_traversal(event)
     perform_scope_analysis(event)
@@ -782,6 +789,7 @@ def perform_scope_analysis(event):
     panel_lca_class_instance.determine_scope_emissions(df=widget_tabulator.value)
     widget_plotly_figure_piechart.object = create_plotly_figure_piechart(panel_lca_class_instance.scope_dict)
     filename_download.value = generate_table_filename(event)
+    widget_number_lca_score.value = panel_lca_class_instance.df_tabulator['Burden(Direct)'].sum()
     pn.state.notifications.success('Scope Analysis Complete!', duration=5000)
 
 
@@ -794,6 +802,7 @@ def update_data_based_on_user_input(event):
     panel_lca_class_instance.df_tabulator_from_user = determine_edited_rows(df=panel_lca_class_instance.df_tabulator_from_user)
     panel_lca_class_instance.df_tabulator_from_user = update_production_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
     panel_lca_class_instance.df_tabulator_from_user = update_burden_intensity_based_on_user_data(df=panel_lca_class_instance.df_tabulator_from_user)
+    panel_lca_class_instance.df_tabulator_from_user = update_burden_based_on_user_data(panel_lca_class_instance.df_tabulator_from_user)
     panel_lca_class_instance.df_tabulator = panel_lca_class_instance.df_tabulator_from_user.copy()
     widget_tabulator.value = panel_lca_class_instance.df_tabulator
     pn.state.notifications.success('Completed Updating Supply Chain based on User Input!', duration=5000)
