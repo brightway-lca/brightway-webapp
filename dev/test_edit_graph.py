@@ -81,10 +81,7 @@ def create_user_input_column(
     return df_merged
 
 
-def update_production_based_on_user_data(
-        df: pd.DataFrame,
-        column_name: str
-    ) -> pd.DataFrame:
+def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     """
     Updates the production amount of all nodes which are upstream
     of a node with user-supplied production amount.
@@ -143,8 +140,8 @@ def update_production_based_on_user_data(
         Output DataFrame.
     """
 
-    df_filtered = df[~df[f'{column_name}_USER'].isna()]
-    dict_user_input = df_filtered.set_index('UID').to_dict()[f'{column_name}_USER']
+    df_filtered = df[~df['SupplyAmount_USER'].isna()]
+    dict_user_input = df_filtered.set_index('UID').to_dict()['SupplyAmount_USER']
     
     """
     For the example DataFrame from the docstrings above,
@@ -159,20 +156,34 @@ def update_production_based_on_user_data(
     df = df.copy(deep=True)
     def multiplier(row):
         if not isinstance(row['Branch'], list):
-            return row[column_name]
-        for branch_UID in reversed(row['Branch']):
-            if branch_UID in dict_user_input:
-                return row[column_name] * dict_user_input[branch_UID]
-        return row[column_name]
+            return row['SupplyAmount']
+        elif (
+            row['UID'] == row['Branch'][-1] and
+            np.isnan(row['SupplyAmount_USER'])
+        ):
+            return row['SupplyAmount']
+        elif (
+            row['UID'] == row['Branch'][-1] and not
+            np.isnan(row['SupplyAmount_USER'])
+        ):
+            return row['SupplyAmount_USER']
+        else:
+            for branch_UID in reversed(row['Branch']):
+                if branch_UID in dict_user_input:
+                    return row['SupplyAmount'] * dict_user_input[branch_UID]
 
-    df[column_name] = df.apply(multiplier, axis=1)
-    df.drop(columns=[f'{column_name}_USER'], inplace=True)
+    df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
 
-    return df, dict_user_input
+    df.drop(columns=['SupplyAmount_USER'], inplace=True)
+    df['SupplyAmount'] = df['SupplyAmount_EDITED']
+    df.drop(columns=['SupplyAmount_EDITED'], inplace=True)
 
+    return df
 
 df_user_col = create_user_input_column(
     df_original=df_original,
     df_user_input=df_user_input,
     column_name='SupplyAmount'
 )
+
+df_updated = update_production_based_on_user_data(df_user_col)

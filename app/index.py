@@ -339,10 +339,10 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     | UID | SupplyAmount      | Branch        |
     |-----|-------------------|---------------|
     | 0   | 1                 | NaN           |
-    | 1   | 0.25              | [0,1]         |
+    | 1   | 0.25              | [0,1]         | NOTA BENE!
     | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
     | 3   | 0.1               | [0,3]         |
-    | 4   | 0.18              | [0,1,2,4]     |
+    | 4   | 0.18              | [0,1,2,4]     | NOTA BENE!
     | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
     | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
 
@@ -391,10 +391,20 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
     def multiplier(row):
         if not isinstance(row['Branch'], list):
             return row['SupplyAmount']
-        for branch_UID in reversed(row['Branch']):
-            if branch_UID in dict_user_input:
-                return row['SupplyAmount'] * dict_user_input[branch_UID]
-        return row['SupplyAmount']
+        elif (
+            row['UID'] == row['Branch'][-1] and
+            np.isnan(row['SupplyAmount_USER'])
+        ):
+            return row['SupplyAmount']
+        elif (
+            row['UID'] == row['Branch'][-1] and not
+            np.isnan(row['SupplyAmount_USER'])
+        ):
+            return row['SupplyAmount_USER']
+        else:
+            for branch_UID in reversed(row['Branch']):
+                if branch_UID in dict_user_input:
+                    return row['SupplyAmount'] * dict_user_input[branch_UID]
 
     df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
 
