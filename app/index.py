@@ -392,19 +392,17 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         if not isinstance(row['Branch'], list):
             return row['SupplyAmount']
         elif (
-            row['UID'] == row['Branch'][-1] and
-            np.isnan(row['SupplyAmount_USER'])
-        ):
-            return row['SupplyAmount']
-        elif (
-            row['UID'] == row['Branch'][-1] and not
-            np.isnan(row['SupplyAmount_USER'])
+            not np.isnan(row['SupplyAmount_USER'])
         ):
             return row['SupplyAmount_USER']
-        else:
+        elif (
+            set(dict_user_input.keys()).intersection(row['Branch'])
+        ):
             for branch_UID in reversed(row['Branch']):
-                if branch_UID in dict_user_input:
+                if branch_UID in dict_user_input.keys():
                     return row['SupplyAmount'] * dict_user_input[branch_UID]
+        else:
+            return row['SupplyAmount']
 
     df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
 
