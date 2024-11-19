@@ -7,7 +7,7 @@ data_original = {
     'UID': [0, 1, 2, 3, 4, 5, 6],
     'SupplyAmount': [1000, 500, 70, 100, 90, 10, 5],
     'BurdenIntensity': [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7],
-    'Branch': [np.NaN, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
+    'Branch': [np.nan, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
 }
 
 df_original = pd.DataFrame(data_original)
@@ -16,7 +16,7 @@ data_user_input = {
     'UID': [0, 1, 2, 3, 4, 5, 6],
     'SupplyAmount': [1000, 0, 70, 100, 40, 10, 5],
     'BurdenIntensity': [0.1, 0.5, 0.3, 0.4, 0.5, 2, 0.7],
-    'Branch': [np.NaN, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
+    'Branch': [np.nan, [0, 1], [0, 1, 2], [0, 3], [0, 1, 2, 4], [0, 1, 2, 4, 5], [0, 1, 2, 4, 5, 6]]
 }
 
 df_user_input = pd.DataFrame(data_user_input)
@@ -29,7 +29,7 @@ def create_user_input_column(
     ) -> pd.DataFrame:
     """
     Creates a new column in the 'original' DataFrame where only the
-    user-supplied values are kept. The other values are replaced by NaN.
+    user-supplied values are kept. The other values are replaced by nan.
 
     For instance, given an "original" DataFrame of the kind:
 
@@ -51,9 +51,9 @@ def create_user_input_column(
 
     | UID | SupplyAmount | SupplyAmount_USER |
     |-----|--------------|-------------------|
-    | 0   | 1            | NaN               |
+    | 0   | 1            | nan               |
     | 1   | 0.5          | 0                 |
-    | 2   | 0.2          | NaN               |
+    | 2   | 0.2          | nan               |
 
     Parameters
     ----------
@@ -92,23 +92,23 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
 
     | UID | SupplyAmount | SupplyAmount_USER | Branch        |
     |-----|--------------|-------------------|---------------|
-    | 0   | 1            | NaN               | NaN           |
+    | 0   | 1            | nan               | nan           |
     | 1   | 0.5          | 0.25              | [0,1]         |
-    | 2   | 0.2          | NaN               | [0,1,2]       |
-    | 3   | 0.1          | NaN               | [0,3]         |
+    | 2   | 0.2          | nan               | [0,1,2]       |
+    | 3   | 0.1          | nan               | [0,3]         |
     | 4   | 0.1          | 0.18              | [0,1,2,4]     |
-    | 5   | 0.05         | NaN               | [0,1,2,4,5]   |
-    | 6   | 0.01         | NaN               | [0,1,2,4,5,6] |
+    | 5   | 0.05         | nan               | [0,1,2,4,5]   |
+    | 6   | 0.01         | nan               | [0,1,2,4,5,6] |
 
     the function returns a DataFrame of the kind:
 
     | UID | SupplyAmount      | Branch        |
     |-----|-------------------|---------------|
-    | 0   | 1                 | NaN           |
+    | 0   | 1                 | nan           |
     | 1   | 0.25              | [0,1]         |
     | 2   | 0.2 * (0.25/0.5)  | [0,1,2]       |
     | 3   | 0.1               | [0,3]         |
-    | 4   | 0.18              | [0,1,2,4]     |
+    | 4   | 0.18              | [0,1,2,4]     | NOTA BENE!
     | 5   | 0.05 * (0.1/0.18) | [0,1,2,4,5]   |
     | 6   | 0.01 * (0.1/0.18) | [0,1,2,4,5,6] |
 
@@ -158,19 +158,17 @@ def update_production_based_on_user_data(df: pd.DataFrame) -> pd.DataFrame:
         if not isinstance(row['Branch'], list):
             return row['SupplyAmount']
         elif (
-            row['UID'] == row['Branch'][-1] and
-            np.isnan(row['SupplyAmount_USER'])
-        ):
-            return row['SupplyAmount']
-        elif (
-            row['UID'] == row['Branch'][-1] and not
-            np.isnan(row['SupplyAmount_USER'])
+            not np.isnan(row['SupplyAmount_USER'])
         ):
             return row['SupplyAmount_USER']
-        else:
+        elif (
+            set(dict_user_input.keys()).intersection(row['Branch'])
+        ):
             for branch_UID in reversed(row['Branch']):
-                if branch_UID in dict_user_input:
+                if branch_UID in dict_user_input.keys():
                     return row['SupplyAmount'] * dict_user_input[branch_UID]
+        else:
+            return row['SupplyAmount']
 
     df['SupplyAmount_EDITED'] = df.apply(multiplier, axis=1)
 
