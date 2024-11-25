@@ -932,7 +932,7 @@ widget_float_slider_cutoff = pn.widgets.EditableFloatSlider(
 )
 
 markdown_cutoff_documentation = pn.pane.Markdown("""
-[A cut-off of 10%](https://docs.brightway.dev/projects/graphtools/en/latest/content/api/bw_graph_tools/graph_traversal/new_node_each_visit/index.html) means that only those processes responsible or 90% of impact will be computed.
+[A cut-off of 10%](https://docs.brightway.dev/projects/graphtools/en/latest/content/api/bw_graph_tools/graph_traversal/new_node_each_visit/index.html) means that an upstream process is shown if it accounts for at least 10% of total impact. The lower value of 1% is chosen here for performance reasons only.
 """)
         
 widget_button_graph = pn.widgets.Button(
