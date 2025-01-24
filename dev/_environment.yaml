@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  # core funcitonality
+  # core functionality
   - python=3.12
   # panel
   - panel=1.5.2 # https://anaconda.org/conda-forge/panel/files
